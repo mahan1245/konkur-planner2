@@ -1,0 +1,25 @@
+{
+  "name": "konkur-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "اپ اندروید سامانه تحلیل تست کنکور (Capacitor)",
+  "scripts": {
+    "vendor": "node scripts/vendor.mjs",
+    "assets": "capacitor-assets generate --android",
+    "android:add": "cap add android",
+    "android:sync": "npm run vendor && cap sync android",
+    "android:open": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/core": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@fortawesome/fontawesome-free": "^6.5.0",
+    "chart.js": "^4.4.0",
+    "tailwindcss": "^3.4.0",
+    "vazirmatn": "^33.0.0"
+  }
+}

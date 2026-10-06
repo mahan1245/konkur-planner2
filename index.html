@@ -1,0 +1,2230 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>سامانه تحلیل تست و ارتقای سطح کنکور</title>
+    <meta name="theme-color" content="#020617">
+    <link rel="stylesheet" href="vendor/tailwind.css">
+    <script src="vendor/chart.umd.js"></script>
+    <link rel="stylesheet" href="vendor/fa/css/all.min.css">
+    <link rel="stylesheet" href="vendor/vazirmatn/Vazirmatn-font-face.css">
+    <script src="config.js"></script>
+    <style>
+        /* works even if Tailwind CDN fails */ .hidden { display: none !important; }
+        header.sticky { padding-top: calc(0.625rem + env(safe-area-inset-top, 0px)); }
+        nav.fixed { padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px)); }
+        body { font-family: 'Vazirmatn', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .dark-glass { background: rgba(15, 23, 42, 0.94); backdrop-filter: blur(12px); }
+        .level-progress { transition: width 0.5s ease-in-out; }
+
+        /* Speed reward flash effect */
+        #speed-flash-layer { position: fixed; inset: 0; z-index: 60; pointer-events: none; display: flex; align-items: center; justify-content: center; }
+        .speed-flash-card {
+            background: radial-gradient(circle at 50% 0%, rgba(16,185,129,0.35), rgba(6,78,59,0.92));
+            border: 1px solid rgba(52,211,153,0.6);
+            box-shadow: 0 0 40px rgba(16,185,129,0.45), inset 0 0 20px rgba(16,185,129,0.2);
+            border-radius: 1.5rem;
+            padding: 1.1rem 1.8rem;
+            text-align: center;
+            animation: speedPop 1.3s cubic-bezier(.2,1.4,.4,1) forwards;
+        }
+        .late-flash-card {
+            background: radial-gradient(circle at 50% 0%, rgba(244,63,94,0.35), rgba(76,5,25,0.92));
+            border: 1px solid rgba(251,113,133,0.6);
+            box-shadow: 0 0 40px rgba(244,63,94,0.45), inset 0 0 20px rgba(244,63,94,0.2);
+            border-radius: 1.5rem;
+            padding: 1.1rem 1.8rem;
+            text-align: center;
+            animation: speedPop 1.3s cubic-bezier(.2,1.4,.4,1) forwards;
+        }
+        @keyframes speedPop {
+            0% { opacity: 0; transform: scale(0.55) translateY(10px); }
+            15% { opacity: 1; transform: scale(1.08) translateY(0); }
+            25% { transform: scale(1); }
+            78% { opacity: 1; }
+            100% { opacity: 0; transform: scale(1.02) translateY(-6px); }
+        }
+        .speed-flash-burst {
+            position: absolute; inset: -30%; border-radius: 50%;
+            background: radial-gradient(circle, rgba(52,211,153,0.35), transparent 70%);
+            animation: speedBurst 1.3s ease-out forwards;
+        }
+        .late-flash-burst {
+            position: absolute; inset: -30%; border-radius: 50%;
+            background: radial-gradient(circle, rgba(244,63,94,0.35), transparent 70%);
+            animation: speedBurst 1.3s ease-out forwards;
+        }
+        @keyframes speedBurst {
+            0% { opacity: 0.9; transform: scale(0.2); }
+            100% { opacity: 0; transform: scale(1.6); }
+        }
+
+        /* Toggle switch (auto timer) */
+        .toggle-switch { width: 38px; height: 21px; background: #334155; border-radius: 999px; position: relative; transition: background .2s; flex-shrink: 0; }
+        .toggle-switch.on { background: #059669; }
+        .toggle-switch .dot { position: absolute; top: 2px; right: 2px; width: 17px; height: 17px; background: white; border-radius: 999px; transition: transform .2s; }
+        .toggle-switch.on .dot { transform: translateX(-17px); }
+
+        /* Answer sheet grid cell */
+        .asheet-cell { position: relative; aspect-ratio: 1/1; border-radius: 0.85rem; border-width: 1px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+        .asheet-flagbar { position: absolute; top: 2px; left: 2px; right: 2px; display: flex; justify-content: space-between; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen pb-24 selection:bg-blue-600 selection:text-white">
+
+    <!-- Header & Level Stats -->
+    <header class="sticky top-0 z-40 dark-glass border-b border-slate-800 px-4 py-2.5">
+        <div class="flex items-center justify-between max-w-md mx-auto">
+            <div class="flex items-center gap-2.5">
+                <div id="user-avatar" class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center text-slate-950 font-black text-xl shadow-lg shadow-amber-500/20">
+                    <i class="fa-solid fa-trophy"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 id="user-level-title" class="font-extrabold text-xs text-amber-400">سطح ۱: تازه‌کار کنکوری</h1>
+                        <span id="user-xp-badge" class="text-[9px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded-full border border-slate-700">0 XP</span>
+                    </div>
+                    <!-- Level Progress Bar -->
+                    <div class="w-32 bg-slate-800 h-1.5 rounded-full mt-1 overflow-hidden">
+                        <div id="level-progress-bar" class="bg-gradient-to-r from-amber-500 to-orange-500 h-full level-progress" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center gap-1">
+                <button id="account-btn" onclick="openAccount()" class="p-2 text-slate-400 hover:text-white text-sm" title="حساب کاربری"><i class="fa-solid fa-user"></i></button>
+                <button onclick="exportData()" class="p-2 text-slate-400 hover:text-white text-xs" title="خروجی پشتیبان"><i class="fa-solid fa-download"></i></button>
+                <label class="p-2 text-slate-400 hover:text-white text-xs cursor-pointer" title="بازیابی اطلاعات">
+                    <i class="fa-solid fa-upload"></i>
+                    <input type="file" id="importFile" class="hidden" onchange="importData(event)">
+                </label>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-md mx-auto px-4 pt-4">
+
+        <!-- TAB 1: FAST ENTRY & TIMER (تست‌زنی) -->
+        <section id="tab-fast" class="space-y-4">
+            
+            <!-- Daily goal (gentle, no penalties) -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                    <span class="font-bold text-slate-200"><i class="fa-solid fa-bullseye text-emerald-400 ml-1"></i> هدف امروز: <span id="goal-done">0</span> از <span id="goal-target">20</span></span>
+                    <span id="streak-chip" class="text-[10px] text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full"></span>
+                </div>
+                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div id="goal-bar" class="bg-gradient-to-r from-emerald-500 to-teal-400 h-full level-progress" style="width:0%"></div></div>
+                <div class="flex items-center justify-between text-[10px] text-slate-400">
+                    <span id="goal-msg"></span>
+                    <span class="flex items-center gap-1.5">هدف روزانه
+                        <button onclick="changeGoal(-5)" class="w-8 h-8 rounded-lg bg-slate-800 text-slate-200 font-black">−</button>
+                        <button onclick="changeGoal(5)" class="w-8 h-8 rounded-lg bg-slate-800 text-slate-200 font-black">+</button>
+                    </span>
+                </div>
+            </div>
+
+
+            <!-- AI Answer-Key Scanner -->
+            <div class="bg-gradient-to-br from-indigo-950/80 to-slate-900 border border-indigo-500/20 rounded-2xl p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="text-xs font-black text-white flex items-center gap-1.5"><i class="fa-solid fa-wand-magic-sparkles text-indigo-400"></i> کلیدخوان هوشمند AI</div>
+                        <div class="text-[10px] text-slate-400 mt-1">از صفحه کلید پاسخ کتاب عکس بگیر؛ پاسخ‌ها خودکار استخراج و با پارتت تطبیق داده می‌شوند.</div>
+                    </div>
+                    <span class="text-[9px] font-bold px-2 py-1 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">AI</span>
+                </div>
+                <button onclick="openAiKeyModal()" class="w-full h-11 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black transition">
+                    <i class="fa-solid fa-camera ml-1"></i> اسکن صفحه کلید پاسخ
+                </button>
+                <p class="text-[9px] text-slate-500 text-center">عکس برای تحلیل به سرور امن ارسال می‌شود؛ کلید API داخل اپ قرار نمی‌گیرد.</p>
+            </div>
+
+            <!-- Setup Block -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-md">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span class="text-xs font-bold text-blue-400 flex items-center gap-1.5">
+                        <i class="fa-solid fa-sliders"></i> تنظیمات پارت تست‌زنی
+                    </span>
+                    <button onclick="openContinuePartsModal()" class="text-[10px] bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 px-2 py-1 rounded-lg transition font-bold flex items-center gap-1">
+                        <i class="fa-solid fa-forward"></i> ادامه پارت‌های ناتمام
+                    </button>
+                </div>
+                
+                <!-- Lessons Select -->
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-[11px] text-slate-400 mb-1">درس تخصصی</label>
+                        <select id="fast-subject" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:border-blue-500 outline-none">
+                            <option value="حسابان">حسابان</option>
+                            <option value="هندسه">هندسه</option>
+                            <option value="گسسته">گسسته</option>
+                            <option value="فیزیک">فیزیک</option>
+                            <option value="شیمی">شیمی</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] text-slate-400 mb-1">منبع کتاب / فایل PDF</label>
+                        <input type="text" id="fast-source" placeholder="مثلاً: خیلی سبز / میکرو" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:border-blue-500 outline-none">
+                    </div>
+                </div>
+
+                <!-- Topic & Test Range -->
+                <div>
+                    <label class="block text-[11px] text-slate-400 mb-1">عنوان دقیق مطلب / فصل</label>
+                    <input type="text" id="fast-topic" placeholder="مثلاً: حد و پیوستگی / قضیه سینوس‌ها" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:border-blue-500 outline-none">
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                    <div>
+                        <label class="block text-[10px] text-slate-400 mb-1">شماره تست شروع</label>
+                        <input type="text" inputmode="numeric" id="fast-start-no" placeholder="مثلاً: 1643" onchange="initSessionRange()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-emerald-400 font-bold focus:border-blue-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] text-slate-400 mb-1">شماره تست پایان</label>
+                        <input type="text" inputmode="numeric" id="fast-end-no" placeholder="مثلاً: 1665" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-emerald-400 font-bold focus:border-blue-500 outline-none">
+                    </div>
+                </div>
+
+                <!-- Mode & Timer Setup -->
+                <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 space-y-2.5">
+                    <label class="block text-[10px] text-slate-400">نوع تست‌زنی و زمان‌بندی:</label>
+                    <div class="grid grid-cols-3 gap-2 text-xs">
+                        <label class="cursor-pointer">
+                            <input type="radio" name="testMode" value="learning" checked class="peer hidden" onchange="setTimerMode('learning')">
+                            <div class="p-2 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 text-center peer-checked:bg-indigo-600 peer-checked:text-white peer-checked:border-indigo-500 text-[10px] font-semibold transition">
+                                <i class="fa-solid fa-graduation-cap ml-1"></i> آموزشی (۵ د)
+                            </div>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="radio" name="testMode" value="speed" class="peer hidden" onchange="setTimerMode('speed')">
+                            <div class="p-2 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 text-center peer-checked:bg-amber-600 peer-checked:text-white peer-checked:border-amber-500 text-[10px] font-semibold transition">
+                                <i class="fa-solid fa-stopwatch ml-1"></i> سرعتی (۳ د)
+                            </div>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="radio" name="testMode" value="custom" class="peer hidden" onchange="setTimerMode('custom')">
+                            <div class="p-2 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 text-center peer-checked:bg-emerald-600 peer-checked:text-white peer-checked:border-emerald-500 text-[10px] font-semibold transition">
+                                <i class="fa-solid fa-sliders ml-1"></i> سفارشی
+                            </div>
+                        </label>
+                    </div>
+
+                    <!-- Custom time inputs (shown only in custom mode) -->
+                    <div id="custom-time-box" class="hidden grid grid-cols-2 gap-2 pt-1">
+                        <div>
+                            <label class="block text-[10px] text-slate-400 mb-1">دقیقه</label>
+                            <input type="number" id="custom-minutes" min="0" value="2" onchange="applyCustomTimer()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-emerald-400 font-bold focus:border-emerald-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-slate-400 mb-1">ثانیه</label>
+                            <input type="number" id="custom-seconds" min="0" max="59" value="0" onchange="applyCustomTimer()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-emerald-400 font-bold focus:border-emerald-500 outline-none">
+                        </div>
+                    </div>
+
+                    <!-- Auto timer toggle -->
+                    <div class="flex items-center justify-between pt-1 border-t border-slate-800/70">
+                        <div class="text-[10px] text-slate-300">
+                            <i class="fa-solid fa-wand-magic-sparkles text-emerald-400 ml-1"></i>
+                            تایمر خودکار برای هر تست (نیازی به فعال‌سازی دستی نیست)
+                        </div>
+                        <div id="auto-timer-toggle" class="toggle-switch on" onclick="toggleAutoTimer()">
+                            <div class="dot"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Timer Widget -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-slate-800 text-blue-400 flex items-center justify-center font-bold text-lg">
+                        <i class="fa-solid fa-clock"></i>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-slate-400">زمان هر تست: <span id="timer-per-test-label" class="text-white font-bold">۵ دقیقه</span></div>
+                        <div id="timer-display" class="text-xl font-black font-mono text-emerald-400">05:00</div>
+                    </div>
+                </div>
+                <div class="flex gap-1.5">
+                    <button id="timer-toggle-btn" onclick="toggleTimer()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition">
+                        شروع
+                    </button>
+                    <button onclick="resetTimer()" class="p-1.5 text-slate-400 hover:text-white text-xs">
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tap Keypad -->
+            <div id="submode-tap" class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4">
+                <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                    <div class="text-sm font-black text-white">
+                        ثبت تست شماره: <span id="current-test-num" class="text-blue-400 text-xl font-mono">---</span>
+                    </div>
+                    <button onclick="undoLastTap()" class="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1">
+                        <i class="fa-solid fa-rotate-left"></i> بازگشت
+                    </button>
+                </div>
+
+                <!-- Answer Keypad -->
+                <div class="space-y-2">
+                    <div class="grid grid-cols-4 gap-2">
+                        <button onclick="recordTapAnswer('1')" class="h-12 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 rounded-xl font-black text-lg text-white border border-slate-700 transition">۱</button>
+                        <button onclick="recordTapAnswer('2')" class="h-12 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 rounded-xl font-black text-lg text-white border border-slate-700 transition">۲</button>
+                        <button onclick="recordTapAnswer('3')" class="h-12 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 rounded-xl font-black text-lg text-white border border-slate-700 transition">۳</button>
+                        <button onclick="recordTapAnswer('4')" class="h-12 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 rounded-xl font-black text-lg text-white border border-slate-700 transition">۴</button>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 pt-1">
+                        <button onclick="recordTapAnswer('doubt')" class="h-10 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-bold">شک‌دار / نااطمینان</button>
+                        <button onclick="recordTapAnswer('empty')" class="h-10 bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 rounded-xl text-xs font-bold">نزده (رد شدن)</button>
+                    </div>
+                </div>
+
+                <!-- Live Stream of Tapped Answers -->
+                <div class="pt-2 border-t border-slate-800">
+                    <div class="text-[10px] text-slate-500 mb-1.5">تست‌های ثبت شده در این پارت:</div>
+                    <div id="tap-stream" class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                        <span class="text-[11px] text-slate-600">هنوز تستی وارد نشده...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Finish Session Button -->
+            <button onclick="openReviewModal()" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold py-3.5 rounded-2xl shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-flag-checkered text-lg"></i>
+                اتمام پارت و تحلیل سریع
+            </button>
+
+        </section>
+
+        <!-- TAB 2: FOLDER-BASED ANALYTICS (تحلیل پوشه‌ای و مبحثی) -->
+        <section id="tab-dashboard" class="hidden space-y-4">
+            
+            <!-- Global Stats -->
+            <div class="grid grid-cols-2 gap-2.5">
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5">
+                    <span class="text-[11px] text-slate-400">کل تست‌های زده شده</span>
+                    <div class="flex items-baseline gap-1 mt-1">
+                        <span id="stat-total" class="text-2xl font-black text-white">۰</span>
+                        <span class="text-[10px] text-slate-500">تست</span>
+                    </div>
+                </div>
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5">
+                    <span class="text-[11px] text-slate-400">میانگین درصد کل</span>
+                    <div class="flex items-baseline gap-1 mt-1">
+                        <span id="stat-percentage" class="text-2xl font-black text-emerald-400">۰٪</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="dash-summary" class="grid grid-cols-4 gap-2"></div>
+
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+                <h3 class="font-bold text-xs text-slate-200 flex items-center gap-2"><i class="fa-solid fa-chart-line text-emerald-400"></i> روند ۱۴ روز اخیر <span class="text-[10px] text-slate-500 font-normal">(ستون: تعداد، خط: درصد)</span></h3>
+                <div id="trend-wrap" class="h-44 relative"><canvas id="trendChart"></canvas></div>
+                <p id="trend-empty" class="hidden text-[11px] text-slate-500 text-center py-6">برای دیدن روند، حداقل در ۲ روز مختلف تست ثبت کنید.</p>
+            </div>
+
+            <div id="weak-topics" class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2.5"></div>
+
+            <!-- Reasons Chart -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+                <h3 class="font-bold text-xs text-slate-200 flex items-center gap-2">
+                    <i class="fa-solid fa-chart-pie text-blue-400"></i> تحلیل علل بی‌دقتی و خطاها
+                </h3>
+                <div class="h-44 relative flex items-center justify-center">
+                    <canvas id="reasonsChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Folder System (Subject -> Topics) -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+                <h3 class="font-bold text-xs text-slate-200 flex items-center justify-between">
+                    <span class="flex items-center gap-2">
+                        <i class="fa-solid fa-folder-tree text-indigo-400"></i> پوشه‌بندی دروس و مباحث
+                    </span>
+                    <span class="text-[10px] text-slate-500">تفکیک کلی و جزئی</span>
+                </h3>
+                
+                <!-- Folder Container -->
+                <div id="subject-folders-list" class="space-y-3">
+                    <!-- Dynamic Folders -->
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 3: ACHIEVEMENTS & LEVELS (دستآوردها) -->
+        <section id="tab-achievements" class="hidden space-y-4">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center space-y-2">
+                <div class="w-16 h-16 rounded-full bg-gradient-to-tr from-amber-500 to-orange-500 mx-auto flex items-center justify-center text-slate-950 font-black text-3xl shadow-xl shadow-amber-500/20">
+                    <i class="fa-solid fa-award"></i>
+                </div>
+                <h2 id="achieve-level-name" class="font-black text-base text-white">سطح ۱: تازه‌کار کنکوری</h2>
+                <p class="text-xs text-slate-400">مجموع امتیاز کسب شده: <span id="achieve-total-xp" class="text-amber-400 font-bold">0</span> XP</p>
+            </div>
+
+            <div class="space-y-2.5">
+                <div class="flex items-center justify-between">
+                    <h3 class="font-bold text-xs text-slate-300"><i class="fa-solid fa-fire text-orange-400 ml-1"></i> چالش‌ها و دستاوردهای ویژه</h3>
+                    <span class="text-[9px] text-slate-500">بدون جریمه؛ فقط برای انگیزه</span>
+                </div>
+                <div id="challenge-list" class="space-y-2"></div>
+            </div>
+
+            <div class="space-y-2.5">
+                <h3 class="font-bold text-xs text-slate-300">سطح شما در هر درس <span class="text-slate-500 font-normal">(هر ۱۰۰ تست = یک سطح)</span></h3>
+                <div id="achievements-list" class="space-y-2">
+                    <!-- Dynamic per-subject levels -->
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 4: HISTORY & EDIT -->
+        <section id="tab-history" class="hidden space-y-3">
+            <div class="flex justify-between items-center mb-1">
+                <span class="text-xs font-bold text-slate-400">تاریخچه ثبت‌شده‌ها <span class="text-slate-600 font-normal">(بر اساس پارت)</span></span>
+                <button onclick="clearAllData()" class="text-[11px] text-rose-400 hover:text-rose-300"><i class="fa-solid fa-trash ml-1"></i> پاکسازی همه</button>
+            </div>
+            <div id="testHistoryList" class="space-y-2.5"></div>
+        </section>
+
+    </main>
+
+
+    <!-- AI ANSWER KEY MODAL -->
+    <div id="aiKeyModal" class="fixed inset-0 z-[70] bg-slate-950/90 backdrop-blur-md hidden flex items-end sm:items-center justify-center p-0 sm:p-4" onclick="if(event.target===this)closeAiKeyModal()">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 space-y-4" style="padding-bottom:max(1.25rem,env(safe-area-inset-bottom))">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="font-black text-sm text-white"><i class="fa-solid fa-wand-magic-sparkles text-indigo-400 ml-1"></i> اسکن کلید پاسخ با AI</h3>
+                    <p class="text-[10px] text-slate-500 mt-1">فقط صفحه‌ای را بفرست که شماره تست و گزینه صحیح در آن مشخص است.</p>
+                </div>
+                <button onclick="closeAiKeyModal()" class="w-9 h-9 text-slate-400"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <input id="ai-key-file" type="file" accept="image/*" capture="environment" class="hidden" onchange="previewAiKeyImage(event)">
+            <button onclick="document.getElementById('ai-key-file').click()" class="w-full h-28 rounded-2xl border border-dashed border-indigo-500/40 bg-indigo-500/5 text-indigo-300 text-xs font-bold">
+                <i class="fa-solid fa-camera text-2xl block mb-2"></i>
+                انتخاب / گرفتن عکس صفحه کلید
+            </button>
+            <img id="ai-key-preview" class="hidden w-full max-h-52 object-contain rounded-xl border border-slate-800 bg-slate-950" alt="پیش‌نمایش کلید پاسخ">
+            <div id="ai-key-status" class="hidden text-xs rounded-xl p-3"></div>
+            <div id="ai-key-result" class="hidden bg-slate-950 border border-slate-800 rounded-xl p-3 max-h-48 overflow-y-auto"></div>
+            <div class="grid grid-cols-2 gap-2">
+                <button id="ai-key-analyze-btn" onclick="analyzeAiAnswerKey()" disabled class="h-11 rounded-xl bg-indigo-600 text-white text-xs font-black disabled:opacity-40">تحلیل تصویر</button>
+                <button onclick="closeAiKeyModal()" class="h-11 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold">انصراف</button>
+            </div>
+            <button id="ai-key-apply-btn" onclick="applyAiKeyToCurrentSession()" class="hidden w-full h-11 rounded-xl bg-emerald-600 text-white text-xs font-black">اعمال کلید روی پارت فعلی</button>
+        </div>
+    </div>
+
+    <!-- REVIEW MODAL & EDIT TOPIC -->
+    <div id="accountModal" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md hidden flex items-end sm:items-center justify-center p-0 sm:p-4" onclick="if(event.target===this)closeAccount()">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 space-y-4" style="padding-bottom:max(1.25rem,env(safe-area-inset-bottom))">
+            <div class="flex items-center justify-between">
+                <h3 class="font-extrabold text-sm text-white"><i class="fa-solid fa-user-shield text-emerald-400 ml-1.5"></i>حساب کاربری</h3>
+                <button onclick="closeAccount()" class="w-9 h-9 text-slate-400" aria-label="بستن"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <p id="acct-err" class="hidden text-xs text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-xl p-2.5"></p>
+
+            <div id="acct-login" class="space-y-3">
+                <p class="text-xs text-slate-400 leading-6">با شماره موبایل وارد شوید؛ رمز عبور لازم نیست. بدون حساب هم می‌توانید از اپ استفاده کنید، حساب فقط برای نگه‌داری و همگام‌سازی اطلاعات است.</p>
+                <input id="acct-phone" type="tel" dir="ltr" inputmode="numeric" autocomplete="tel" placeholder="09123456789" class="w-full h-12 bg-slate-950 border border-slate-700 rounded-xl px-3 text-base text-white text-center tracking-wider" onkeydown="if(event.key==='Enter')acctRequestCode()">
+                <button onclick="acctRequestCode()" class="acct-act w-full h-12 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-sm font-bold">دریافت کد ورود</button>
+                <a href="privacy.html" target="_blank" class="block text-center text-[11px] text-slate-500 py-1">با ورود، <span class="underline">سیاست حریم خصوصی</span> را می‌پذیرید</a>
+            </div>
+
+            <div id="acct-code-pane" class="hidden space-y-3">
+                <p class="text-xs text-slate-400 leading-6">کد ۶ رقمی ارسال‌شده به <span id="acct-sent-to" dir="ltr" class="text-slate-200 font-bold"></span> را وارد کنید.</p>
+                <input id="acct-code" type="text" dir="ltr" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="------" class="w-full h-14 bg-slate-950 border border-slate-700 rounded-xl px-3 text-2xl text-white text-center tracking-[0.5em] font-black" oninput="if(num(this.value).length===6)acctVerify()">
+                <button onclick="acctVerify()" class="acct-act w-full h-12 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-sm font-bold">ورود</button>
+                <div class="flex items-center justify-between text-xs">
+                    <button id="acct-resend" onclick="acctRequestCode(true)" class="acct-act text-blue-400 disabled:text-slate-500 py-2"></button>
+                    <button onclick="acctPane('login')" class="text-slate-400 py-2">تغییر شماره</button>
+                </div>
+            </div>
+
+            <div id="acct-user" class="hidden space-y-3">
+                <div class="bg-slate-950 border border-slate-800 rounded-2xl p-3 flex items-center justify-between">
+                    <div><div id="acct-user-phone" dir="ltr" class="font-black text-white text-sm text-right"></div><div id="acct-user-plan" class="text-[11px] text-slate-400 mt-0.5"></div></div>
+                    <i class="fa-solid fa-circle-check text-emerald-400 text-lg"></i>
+                </div>
+                <div id="acct-plans" class="hidden bg-slate-950 border border-amber-500/20 rounded-2xl p-3 space-y-2">
+                    <div class="flex items-center justify-between"><span class="text-xs font-extrabold text-amber-300"><i class="fa-solid fa-crown ml-1"></i>ارتقا به Premium</span><span id="acct-plan-exp" class="text-[10px] text-slate-400"></span></div>
+                    <div id="acct-plan-list" class="space-y-1.5"></div>
+                    <p class="text-[10px] text-slate-500 leading-5">پرداخت یک‌بار و بدون تمدید خودکار است. پس از پرداخت به اپ برگردید.</p>
+                </div>
+                <div id="acct-usage" class="text-[11px] text-slate-400"></div>
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                    <span id="sync-status" class="text-[11px] text-slate-400 leading-5"></span>
+                    <button onclick="runSync(true)" class="acct-act shrink-0 h-9 px-3 bg-blue-600/20 text-blue-300 border border-blue-500/30 rounded-lg text-[11px] font-bold">همگام‌سازی</button>
+                </div>
+                <button onclick="acctExport()" class="acct-act w-full h-11 bg-slate-800/60 hover:bg-slate-800 text-slate-200 rounded-xl text-xs font-bold"><i class="fa-solid fa-download ml-1.5"></i>دانلود همه‌ی اطلاعات حساب</button>
+                <button onclick="acctLogout()" class="acct-act w-full h-12 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-bold">خروج از حساب</button>
+                <button onclick="acctDelete()" class="acct-act w-full h-10 text-rose-400 text-xs">حذف حساب (اطلاعات روی دستگاه باقی می‌ماند)</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="reviewModal" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-t-3xl sm:rounded-3xl max-h-[85vh] flex flex-col overflow-hidden">
+            <div class="p-4 border-b border-slate-800 flex justify-between items-center">
+                <div>
+                    <h3 class="font-bold text-sm text-white">تحلیل سریع و اصلاح مبحث</h3>
+                    <p class="text-[10px] text-slate-400">می‌توانید همینجا نام مبحث و علل اشتباه را ویرایش کنید</p>
+                </div>
+                <button onclick="closeReviewModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <div id="review-list" class="p-4 overflow-y-auto space-y-3 flex-1">
+                <!-- Dynamic Items -->
+            </div>
+
+            <div class="p-4 border-t border-slate-800 bg-slate-950">
+                <button onclick="saveSessionData()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl text-xs transition">
+                    ذخیره نهایی و دریافت XP
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SMART ANSWER SHEET MODAL -->
+    <div id="answerSheetModal" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-t-3xl sm:rounded-3xl max-h-[85vh] flex flex-col overflow-hidden">
+            <div class="p-4 border-b border-slate-800 flex justify-between items-center">
+                <div>
+                    <h3 id="asheet-title" class="font-bold text-sm text-white">پاسخ‌برگ هوشمند</h3>
+                    <p class="text-[10px] text-slate-400">رنگی مثل پاسخ‌برگ کنکور — تست‌های مهم یا برای بعد را مشخص کنید</p>
+                </div>
+                <button onclick="closeAnswerSheet()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <!-- Legend -->
+            <div class="px-4 pt-3 flex flex-wrap gap-2 text-[9px] text-slate-400">
+                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-emerald-500/70 inline-block"></span> درست</span>
+                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-rose-500/70 inline-block"></span> نادرست</span>
+                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-amber-500/70 inline-block"></span> شک‌دار</span>
+                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-slate-600 inline-block"></span> نزده</span>
+                <span class="flex items-center gap-1"><i class="fa-solid fa-star text-amber-400"></i> مهم</span>
+                <span class="flex items-center gap-1"><i class="fa-solid fa-clock text-blue-400"></i> برای بعد</span>
+            </div>
+
+            <!-- Filters -->
+            <div class="px-4 pt-2.5 flex gap-1.5 text-[10px]">
+                <button onclick="setAnswerSheetFilter('all')" id="asheet-filter-all" class="flex-1 py-1.5 rounded-lg border font-bold transition"></button>
+                <button onclick="setAnswerSheetFilter('important')" id="asheet-filter-important" class="flex-1 py-1.5 rounded-lg border font-bold transition"></button>
+                <button onclick="setAnswerSheetFilter('later')" id="asheet-filter-later" class="flex-1 py-1.5 rounded-lg border font-bold transition"></button>
+            </div>
+
+            <div id="asheet-grid" class="p-4 overflow-y-auto flex-1 grid grid-cols-5 gap-2">
+                <!-- Dynamic cells -->
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTINUE INCOMPLETE PARTS MODAL -->
+    <div id="continuePartsModal" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-t-3xl sm:rounded-3xl max-h-[85vh] flex flex-col overflow-hidden">
+            <div class="p-4 border-b border-slate-800 flex justify-between items-center">
+                <div>
+                    <h3 class="font-bold text-sm text-white">ادامه پارت‌های ناتمام</h3>
+                    <p class="text-[10px] text-slate-400">هر پارتی که هنوز کامل نشده را از همینجا ادامه بدهید</p>
+                </div>
+                <button onclick="closeContinuePartsModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div id="continue-parts-list" class="p-4 overflow-y-auto space-y-2.5 flex-1">
+                <!-- Dynamic -->
+            </div>
+        </div>
+    </div>
+
+    <!-- EDIT WHOLE PART MODAL (bulk fix subject/source/topic for a group of tests) -->
+    <div id="editPartModal" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-t-3xl sm:rounded-3xl overflow-hidden">
+            <div class="p-4 border-b border-slate-800 flex justify-between items-center">
+                <div>
+                    <h3 class="font-bold text-sm text-white">ویرایش کل پارت</h3>
+                    <p class="text-[10px] text-slate-400">این تغییرات روی همه‌ی تست‌های این پارت اعمال می‌شود</p>
+                </div>
+                <button onclick="closeEditPartModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="p-4 space-y-3">
+                <div>
+                    <label class="block text-[11px] text-slate-400 mb-1">درس</label>
+                    <select id="editpart-subject" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white outline-none">
+                        <option value="حسابان">حسابان</option>
+                        <option value="هندسه">هندسه</option>
+                        <option value="گسسته">گسسته</option>
+                        <option value="فیزیک">فیزیک</option>
+                        <option value="شیمی">شیمی</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] text-slate-400 mb-1">منبع</label>
+                    <input type="text" id="editpart-source" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] text-slate-400 mb-1">مبحث</label>
+                    <input type="text" id="editpart-topic" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white outline-none">
+                </div>
+            </div>
+            <div class="p-4 border-t border-slate-800 bg-slate-950">
+                <button onclick="saveEditPart()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl text-xs transition">ذخیره تغییرات پارت</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EDIT SINGLE TEST MODAL -->
+    <div id="editTestModal" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-t-3xl sm:rounded-3xl overflow-hidden">
+            <div class="p-4 border-b border-slate-800 flex justify-between items-center">
+                <h3 class="font-bold text-sm text-white">ویرایش تست</h3>
+                <button onclick="closeEditTestModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="p-4 space-y-3">
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-[11px] text-slate-400 mb-1">شماره تست</label>
+                        <input type="text" inputmode="numeric" id="edittest-no" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-emerald-400 font-bold outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] text-slate-400 mb-1">وضعیت</label>
+                        <select id="edittest-status" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white outline-none">
+                            <option value="correct">درست</option>
+                            <option value="wrong">نادرست</option>
+                            <option value="doubt">شک‌دار</option>
+                            <option value="empty">نزده</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[11px] text-slate-400 mb-1">منبع</label>
+                    <input type="text" id="edittest-source" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] text-slate-400 mb-1">مبحث</label>
+                    <input type="text" id="edittest-topic" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] text-slate-400 mb-1">نکته</label>
+                    <input type="text" id="edittest-note" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white outline-none">
+                </div>
+            </div>
+            <div class="p-4 border-t border-slate-800 bg-slate-950 flex gap-2">
+                <button onclick="deleteTestFromEditModal()" class="flex-1 bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 border border-rose-500/30 font-bold py-3 rounded-xl text-xs transition">
+                    <i class="fa-solid fa-trash ml-1"></i> حذف این تست
+                </button>
+                <button onclick="saveEditTest()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl text-xs transition">ذخیره</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Speed reward flash layer -->
+    <div id="speed-flash-layer"></div>
+
+    <!-- Navigation -->
+    <nav class="fixed bottom-0 inset-x-0 dark-glass border-t border-slate-800 px-4 py-2 z-40">
+        <div class="max-w-md mx-auto flex justify-around items-center">
+            <button onclick="switchTab('fast')" id="nav-fast" class="flex flex-col items-center gap-1 text-blue-500 transition">
+                <i class="fa-solid fa-bolt text-base"></i>
+                <span class="text-[9px] font-bold">تست‌زنی</span>
+            </button>
+            <button onclick="switchTab('dashboard')" id="nav-dashboard" class="flex flex-col items-center gap-1 text-slate-400 hover:text-white transition">
+                <i class="fa-solid fa-folder-open text-base"></i>
+                <span class="text-[9px] font-bold">پوشه‌ها</span>
+            </button>
+            <button onclick="switchTab('achievements')" id="nav-achievements" class="flex flex-col items-center gap-1 text-slate-400 hover:text-white transition">
+                <i class="fa-solid fa-trophy text-base"></i>
+                <span class="text-[9px] font-bold">دستاوردها</span>
+            </button>
+            <button onclick="switchTab('history')" id="nav-history" class="flex flex-col items-center gap-1 text-slate-400 hover:text-white transition">
+                <i class="fa-solid fa-list-ul text-base"></i>
+                <span class="text-[9px] font-bold">تاریخچه</span>
+            </button>
+        </div>
+    </nav>
+
+    <script>
+
+        // ===== Storage / safety layer (schema v2) =====
+        const SCHEMA = 2, ST = ['correct','wrong','doubt','empty'];
+        let timerStartedAt = 0, timerPausedElapsed = 0;
+        const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const uid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+        const sid = v => String(v ?? '').replace(/[^\w-]/g, '').slice(0, 64);
+        function num(v) { return String(v ?? '').replace(/[۰-۹]/g, d => d.charCodeAt(0) - 1776).replace(/[٠-٩]/g, d => d.charCodeAt(0) - 1632); }
+        function readArr(k) { try { const v = JSON.parse(localStorage.getItem(k)); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+        function normTest(t) {
+            if (!t || typeof t !== 'object') return null;
+            const s = (v, n = 200) => String(v ?? '').slice(0, n);
+            return { id: sid(t.id), sessionId: t.sessionId ? sid(t.sessionId) : null, subject: s(t.subject, 40) || 'عمومی', source: s(t.source) || 'عمومی', topic: s(t.topic) || 'عمومی',
+                testNo: parseInt(num(t.testNo)) || 0, val: s(t.val, 20), status: ST.includes(t.status) ? t.status : 'empty', reason: s(t.reason, 40), note: s(t.note, 500),
+                important: !!t.important, later: !!t.later, date: s(t.date, 20), ts: Number(t.ts) || null, timeSpent: t.timeSpent == null ? null : (Number(t.timeSpent) || 0) };
+        }
+        function migrate() {
+            const ver = parseInt(localStorage.getItem('konkur_schema')) || 1;
+            let T = readArr('konkur_tests'), S = readArr('konkur_sessions_meta');
+            if (ver < SCHEMA && !localStorage.getItem('konkur_backup_v1')) {
+                try { localStorage.setItem('konkur_backup_v1', JSON.stringify({ tests: T, sessionsMeta: S, xp: localStorage.getItem('konkur_xp'), at: Date.now() })); } catch (e) {}
+            }
+            const metaTs = {}; S.forEach(s => { if (s && s.id) metaTs[s.id] = s.timestamp; });
+            const seen = new Set();
+            T = T.map(normTest).filter(Boolean).map(t => {
+                if (ver < SCHEMA || !t.id || seen.has(t.id)) t.id = uid();
+                seen.add(t.id);
+                if (!t.ts && t.sessionId && metaTs[t.sessionId]) t.ts = metaTs[t.sessionId];
+                return t;
+            });
+            S = S.filter(s => s && s.id && typeof s.lastNo === 'number').map(s => ({ ...s, id: sid(s.id) }));
+            return { tests: T, sessionsMeta: S };
+        }
+        function syncMeta() {
+            sessionsMeta = sessionsMeta.filter(s => {
+                const own = tests.filter(t => t.sessionId === s.id);
+                if (!own.length) return false;
+                s.lastNo = Math.max(...own.map(t => t.testNo)); s.endNo = Math.max(s.endNo || 0, s.lastNo);
+                return true;
+            });
+        }
+        function persist() {
+            try {
+                syncMeta();
+                localStorage.setItem('konkur_tests', JSON.stringify(tests));
+                localStorage.setItem('konkur_sessions_meta', JSON.stringify(sessionsMeta));
+                localStorage.setItem('konkur_schema', String(SCHEMA));
+                try { if (window.__syncReady) scheduleSync(); } catch (e) {} // sync must never break saving
+                return true;
+            } catch (e) { alert('ذخیره‌سازی انجام نشد (حافظه‌ی مرورگر پر است یا حالت خصوصی فعال است). همین حالا از داده‌ها پشتیبان بگیرید.'); return false; }
+        }
+        function snapshot(key) { try { localStorage.setItem(key, JSON.stringify({ tests, sessionsMeta, at: Date.now() })); } catch (e) {} }
+        function saveDraft() {
+            try {
+                if (!currentSessionTests.length) { localStorage.removeItem('konkur_draft'); return; }
+                const g = id => document.getElementById(id).value;
+                localStorage.setItem('konkur_draft', JSON.stringify({ t: currentSessionTests, p: currentPointerNo, m: currentSessionMetaId,
+                    f: { subject: g('fast-subject'), source: g('fast-source'), topic: g('fast-topic'), start: g('fast-start-no'), end: g('fast-end-no') } }));
+            } catch (e) {}
+        }
+        function restoreDraft() {
+            try {
+                const d = JSON.parse(localStorage.getItem('konkur_draft'));
+                if (!d || !Array.isArray(d.t) || !d.t.length) return;
+                currentSessionTests = d.t; currentPointerNo = d.p; currentSessionMetaId = d.m || null;
+                const set = (id, v) => { document.getElementById(id).value = v ?? ''; };
+                set('fast-subject', d.f.subject); set('fast-source', d.f.source); set('fast-topic', d.f.topic); set('fast-start-no', d.f.start); set('fast-end-no', d.f.end);
+                updateTapUI(); showToast(`${currentSessionTests.length} تست از پارت قبلی بازیابی شد`);
+            } catch (e) {}
+        }
+        document.addEventListener('visibilitychange', () => { if (timerRunning) tick(); });
+
+        let tests = [], sessionsMeta = [];
+        { const m = migrate(); tests = m.tests; sessionsMeta = m.sessionsMeta; persist(); }
+        let currentSessionTests = [];
+        let chartInstance = null;
+        let currentPointerNo = 0;
+        let currentSessionMetaId = null; // id of sessionsMeta entry being continued (if any)
+
+        // Timer Variables
+        let timerInterval = null;
+        let timerSecondsLeft = 300; // default 5 min
+        let timerRunning = false;
+        let perTestSeconds = 300; // replaces old perTestMinutes-only model
+        let autoTimerEnabled = true;
+        let timerEngagedForCurrentTest = false; // did the timer actually run for the test in progress?
+        let timerOvertimeSeconds = 0; // how many seconds past the limit (once timer hits 0, it keeps counting up here)
+        let timerTimeoutToastShown = false;
+
+        // Answer sheet modal state
+        let asheetSubject = null;
+        let asheetTopic = null;
+        let asheetFilter = 'all';
+
+        // Gamification / XP System
+        const levels = [
+            { level: 1, name: 'تازه‌کار کنکوری', minXp: 0 },
+            { level: 2, name: 'تست‌زن منظم', minXp: 150 },
+            { level: 3, name: 'تحلیل‌گر ماهر', minXp: 400 },
+            { level: 4, name: 'سلطان بی‌دقتی‌گیری', minXp: 800 },
+            { level: 5, name: 'استاد تست‌زنی سرعتی', minXp: 1500 },
+            { level: 6, name: 'رتبه برتر کنکور', minXp: 3000 }
+        ];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            restoreDraft();
+            initAccount();
+            // Android/browser Back closes the open modal instead of leaving the app
+            document.querySelectorAll('[id$="Modal"]').forEach(el => new MutationObserver(() => {
+                const open = !el.classList.contains('hidden'), cur = history.state && history.state.m;
+                if (open && cur !== el.id) history.pushState({ m: el.id }, '');
+                if (!open && cur === el.id) history.back();
+            }).observe(el, { attributes: true, attributeFilter: ['class'] }));
+            window.addEventListener('popstate', () => document.querySelectorAll('[id$="Modal"]').forEach(m => m.classList.add('hidden')));
+            updateDashboard();
+            renderHistory();
+            updateUserLevelUI();
+        });
+
+        function switchTab(tabName) {
+            document.getElementById('tab-fast').classList.add('hidden');
+            document.getElementById('tab-dashboard').classList.add('hidden');
+            document.getElementById('tab-achievements').classList.add('hidden');
+            document.getElementById('tab-history').classList.add('hidden');
+
+            document.getElementById('nav-fast').className = "flex flex-col items-center gap-1 text-slate-400 transition";
+            document.getElementById('nav-dashboard').className = "flex flex-col items-center gap-1 text-slate-400 transition";
+            document.getElementById('nav-achievements').className = "flex flex-col items-center gap-1 text-slate-400 transition";
+            document.getElementById('nav-history').className = "flex flex-col items-center gap-1 text-slate-400 transition";
+
+            document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+            document.getElementById(`nav-${tabName}`).className = "flex flex-col items-center gap-1 text-blue-500 transition";
+
+            if (tabName === 'dashboard') updateDashboard();
+            if (tabName === 'achievements') renderAchievementsTab();
+            if (tabName === 'history') renderHistory();
+        }
+
+        // ===== Phase 1: goals, streak, insights =====
+        let trendInstance = null, dailyGoal = parseInt(localStorage.getItem('konkur_goal')) || 20;
+        const $id = i => document.getElementById(i);
+        const dayKey = ts => { const d = new Date(ts); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
+        const pctOf = a => a.length ? Math.round((3 * a.filter(t => t.status === 'correct').length - a.filter(t => t.status === 'wrong').length) / (3 * a.length) * 100) : 0;
+        const fmtSec = s => s < 60 ? s + ' ث' : Math.floor(s / 60) + 'د ' + (s % 60) + 'ث';
+        function todayCount() { const k = dayKey(Date.now()); return tests.filter(t => t.ts && dayKey(t.ts) === k).length; }
+        // One missed day never breaks the streak (rest is part of healthy study); two in a row does.
+        function calcStreak() {
+            const days = new Set(tests.filter(t => t.ts).map(t => dayKey(t.ts)));
+            let streak = 0, gap = 0; const d = new Date();
+            for (let i = 0; i < 400; i++) {
+                if (days.has(dayKey(d))) { streak++; gap = 0; } else if (i > 0 && ++gap >= 2) break;
+                d.setDate(d.getDate() - 1);
+            }
+            return streak;
+        }
+        function changeGoal(step) {
+            dailyGoal = Math.max(5, Math.min(100, dailyGoal + step));
+            try { localStorage.setItem('konkur_goal', dailyGoal); } catch (e) {}
+            renderGoal();
+        }
+        function renderGoal() {
+            const done = todayCount(), st = calcStreak();
+            $id('goal-done').innerText = done; $id('goal-target').innerText = dailyGoal;
+            $id('goal-bar').style.width = Math.min(100, Math.round(done / dailyGoal * 100)) + '%';
+            $id('goal-msg').innerText = done === 0 ? 'هر مقدار امروز ارزشمند است' : done < dailyGoal ? `${dailyGoal - done} تست تا هدف امروز` : 'هدف امروز انجام شد 🌿 استراحت هم جزو برنامه است';
+            $id('streak-chip').innerText = st ? `🔥 ${st} روز فعال` : 'یک شروع تازه';
+        }
+        function renderInsights() {
+            const c = s => tests.filter(t => t.status === s).length;
+            const timed = tests.filter(t => t.timeSpent != null && t.status !== 'empty');
+            const avg = timed.length ? Math.round(timed.reduce((a, t) => a + t.timeSpent, 0) / timed.length) : null;
+            const week = tests.filter(t => t.ts && t.ts >= Date.now() - 7 * 864e5).length;
+            const cell = (v, l, cl) => `<div class="bg-slate-900 border border-slate-800 rounded-xl p-2 text-center"><div class="font-black text-sm ${cl}">${v}</div><div class="text-[9px] text-slate-400 mt-0.5">${l}</div></div>`;
+            $id('dash-summary').innerHTML = cell(c('correct'), 'درست', 'text-emerald-400') + cell(c('wrong'), 'نادرست', 'text-rose-400') + cell(c('doubt'), 'شک‌دار', 'text-amber-400') + cell(c('empty'), 'نزده', 'text-slate-300')
+                + cell(avg == null ? '—' : fmtSec(avg), 'میانگین زمان', 'text-blue-400') + cell(todayCount(), 'امروز', 'text-white') + cell(week, '۷ روز اخیر', 'text-white') + cell(calcStreak(), 'روز فعال', 'text-amber-400');
+
+            const days = [], labels = [];
+            for (let i = 13; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); days.push(dayKey(d)); labels.push(d.toLocaleDateString('fa-IR', { month: 'numeric', day: 'numeric' })); }
+            const by = {}; tests.forEach(t => { if (t.ts) (by[dayKey(t.ts)] = by[dayKey(t.ts)] || []).push(t); });
+            const counts = days.map(k => (by[k] || []).length), pcts = days.map(k => by[k] ? pctOf(by[k]) : null);
+            const enough = counts.filter(Boolean).length >= 2;
+            $id('trend-wrap').classList.toggle('hidden', !enough); $id('trend-empty').classList.toggle('hidden', enough);
+            if (trendInstance) { trendInstance.destroy(); trendInstance = null; }
+            if (enough && typeof Chart !== 'undefined') {
+                const tk = { color: '#64748b', font: { size: 9 } };
+                trendInstance = new Chart($id('trendChart').getContext('2d'), { data: { labels, datasets: [
+                    { type: 'bar', label: 'تعداد', data: counts, backgroundColor: '#3b82f655', yAxisID: 'y' },
+                    { type: 'line', label: 'درصد', data: pcts, borderColor: '#10b981', backgroundColor: '#10b981', tension: .3, spanGaps: true, yAxisID: 'y1' }] },
+                    options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: tk }, y: { beginAtZero: true, ticks: tk }, y1: { position: 'right', min: -33, max: 100, grid: { drawOnChartArea: false }, ticks: tk } }, plugins: { legend: { labels: { color: '#94a3b8', font: { size: 10 } } } } } });
+            }
+
+            const g = {}; tests.forEach(t => { const k = t.subject + '||' + t.topic; (g[k] = g[k] || { s: t.subject, tp: t.topic, a: [] }).a.push(t); });
+            const weak = Object.values(g).filter(x => x.a.length >= 5).map(x => {
+                const r = {}; x.a.forEach(t => { if (t.reason) r[t.reason] = (r[t.reason] || 0) + 1; });
+                const top = Object.entries(r).sort((p, q) => q[1] - p[1])[0];
+                return { s: x.s, tp: x.tp, n: x.a.length, p: pctOf(x.a), r: top && top[1] >= 2 ? top[0] : '' };
+            }).filter(x => x.p < 60).sort((p, q) => p.p - q.p).slice(0, 3);
+            $id('weak-topics').innerHTML = `<h3 class="font-bold text-xs text-slate-200 flex items-center gap-2"><i class="fa-solid fa-magnifying-glass-chart text-rose-400"></i> مباحث پیشنهادی برای مرور</h3>`
+                + (weak.length ? weak.map(x => `<div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs flex justify-between items-center gap-2"><div class="min-w-0"><div class="font-bold text-slate-200 truncate">${esc(x.s)} / ${esc(x.tp)}</div><div class="text-[10px] text-slate-400">${x.n} تست${x.r ? ' | علت پرتکرار: ' + esc(x.r) : ''}</div></div><span dir="ltr" class="font-black text-rose-400">${x.p}٪</span></div>`).join('')
+                    : '<p class="text-[11px] text-slate-500 text-center py-3">هنوز داده‌ی کافی نیست. وقتی در یک مبحث حداقل ۵ تست داشته باشید، ضعف‌ها اینجا نمایش داده می‌شود (یا اگر مبحثی زیر ۶۰٪ نیست، همه‌چیز خوب است).</p>')
+                + '<p class="text-[9px] text-slate-600">این پیشنهادها فقط از روی تست‌های ثبت‌شده‌ی شماست؛ تعداد کم تست، نتیجه را قطعی نمی‌کند.</p>';
+        }
+
+        // ===== Phase 2 / step 3: sync (local-first, last-write-wins) =====
+        // Local edits/deletes are detected by diffing against the snapshot taken at the last sync,
+        // so no edit/delete code path had to change. updatedAt is the sync-time clock.
+        const SYNC_KEY = 'konkur_sync_v1';
+        const TEST_F = ['sessionId', 'subject', 'source', 'topic', 'testNo', 'val', 'status', 'reason', 'note', 'important', 'later', 'date', 'ts', 'timeSpent'];
+        const PART_F = ['subject', 'source', 'topic', 'startNo', 'endNo', 'lastNo', 'timestamp'];
+        let syncState = (() => { try { const s = JSON.parse(localStorage.getItem(SYNC_KEY)); if (s && s.snap) return s; } catch {} return { userId: null, cursor: 0, snap: {}, last: 0 }; })();
+        let syncTimer = null, syncing = false, syncApplying = false, syncMsg = '';
+        const saveSyncState = () => { try { localStorage.setItem(SYNC_KEY, JSON.stringify(syncState)); } catch {} };
+        function h53(s) { // cyrb53: compact change-detection hash
+            let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+            for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
+            h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+            h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+            return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+        }
+        const fieldsOf = (kind) => (kind === 'test' ? TEST_F : PART_F);
+        const recHash = (kind, o) => h53(JSON.stringify(fieldsOf(kind).map((k) => o[k] ?? null)));
+        const toData = (kind, o) => Object.fromEntries(fieldsOf(kind).map((k) => [k, o[k] ?? null]));
+        const sidOf = (v) => String(v ?? '').replace(/[^\w-]/g, '').slice(0, 64);
+        function normPart(id, d) {
+            const s = (v, n = 200) => String(v ?? '').slice(0, n), n = (v) => Number(v) || 0;
+            return { id, subject: s(d.subject, 40), source: s(d.source), topic: s(d.topic), startNo: n(d.startNo), endNo: n(d.endNo), lastNo: n(d.lastNo), timestamp: n(d.timestamp) };
+        }
+        function diffLocal() {
+            const now = Date.now(), cur = new Map(), changes = [], marks = {};
+            tests.forEach((o) => cur.set('test:' + o.id, { kind: 'test', id: o.id, o }));
+            sessionsMeta.forEach((o) => cur.set('part:' + o.id, { kind: 'part', id: o.id, o }));
+            for (const [k, r] of cur) {
+                const h = recHash(r.kind, r.o), s = syncState.snap[k];
+                if (!s || s.h !== h || s.d) { changes.push({ kind: r.kind, id: r.id, updatedAt: now, deleted: false, data: toData(r.kind, r.o) }); marks[k] = { h, u: now }; }
+            }
+            for (const k of Object.keys(syncState.snap)) {
+                if (!cur.has(k) && !syncState.snap[k].d) {
+                    const i = k.indexOf(':');
+                    changes.push({ kind: k.slice(0, i), id: k.slice(i + 1), updatedAt: now, deleted: true, data: {} }); marks[k] = { h: 0, u: now, d: 1 };
+                }
+            }
+            return { changes, marks };
+        }
+        function applyPulled(list) {
+            let changed = 0;
+            for (const r of list) {
+                const k = r.kind + ':' + r.id, snap = syncState.snap[k];
+                if (snap && snap.u >= r.updatedAt && !!snap.d === r.deleted) continue; // already have this version
+                const arr = r.kind === 'test' ? tests : sessionsMeta, i = arr.findIndex((x) => x.id === r.id);
+                if (i >= 0 && snap && snap.h !== recHash(r.kind, arr[i])) continue;   // edited locally since last sync: ours wins next round
+                if (r.deleted) { if (i >= 0) arr.splice(i, 1); syncState.snap[k] = { h: 0, u: r.updatedAt, d: 1 }; changed++; continue; }
+                const rec = r.kind === 'test' ? normTest({ ...r.data, id: r.id }) : normPart(sidOf(r.id), r.data || {});
+                if (!rec) continue;
+                if (i >= 0) arr[i] = rec; else arr.unshift(rec);
+                syncState.snap[k] = { h: recHash(r.kind, rec), u: r.updatedAt }; changed++;
+            }
+            return changed;
+        }
+        async function adoptDevice() {
+            if (tests.length > 0 && !confirm(`${tests.length} تست روی این دستگاه به حساب شما اضافه و با اطلاعات حساب ادغام شود؟\n(چیزی پاک نمی‌شود. «لغو» یعنی ورود انجام نشود.)`)) {
+                try { await apiAuth('/v1/auth/logout'); } catch {}
+                clearSession(); renderAccount(); closeAccount(); return false;
+            }
+            snapshot('konkur_backup_presync');
+            syncState = { userId: acct.user.id, cursor: 0, snap: {}, last: 0 }; saveSyncState();
+            return true;
+        }
+        function renderSyncStatus() {
+            const el = document.getElementById('sync-status'); if (!el) return;
+            el.innerText = syncMsg || (syncState.last ? 'آخرین همگام‌سازی: ' + new Date(syncState.last).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }) : 'هنوز همگام‌سازی نشده');
+        }
+        function scheduleSync(delay = 3000) {
+            if (!acct.user || syncApplying) return;
+            clearTimeout(syncTimer); syncTimer = setTimeout(() => runSync(), delay);
+        }
+        async function runSync(manual = false) {
+            if (syncing || !acct.user) return;
+            syncing = true; syncMsg = 'در حال همگام‌سازی…'; renderSyncStatus();
+            try {
+                if (syncState.userId !== acct.user.id && !(await adoptDevice())) return;
+                const { changes, marks } = diffLocal(), queue = changes.slice(), pulled = [];
+                let cursor = syncState.cursor, more;
+                do {
+                    const chunk = queue.splice(0, 400);
+                    const res = await apiAuth('/v1/sync', { body: { cursor, changes: chunk } });
+                    chunk.forEach((c) => { const k = c.kind + ':' + c.id; syncState.snap[k] = marks[k]; }); saveSyncState(); // never re-push what the server already has
+                    pulled.push(...res.changes); cursor = res.cursor; more = res.hasMore || queue.length > 0;
+                } while (more);
+                syncApplying = true;
+                const n = applyPulled(pulled);
+                if (n) persist();
+                syncApplying = false;
+                syncState.cursor = cursor; syncState.last = Date.now(); saveSyncState(); syncMsg = ''; refreshUsage();
+                if (n) { updateDashboard(); renderHistory(); updateUserLevelUI(); if (manual) showToast(`${n} تغییر از حساب دریافت شد`); }
+                else if (manual) showToast('همه‌چیز به‌روز است ✅');
+            } catch (e) {
+                syncMsg = e.code === 'network' ? 'آفلاین؛ بعداً خودکار تلاش می‌شود' : e.code === 'quota_exceeded' ? 'فضای حساب پر شده است' : 'همگام‌سازی ناموفق بود؛ دوباره تلاش می‌شود';
+                if (manual) showToast(syncMsg);
+                if (e.code !== 'quota_exceeded' && e.status !== 401) scheduleSync(60000);
+            } finally { syncing = false; syncApplying = false; renderSyncStatus(); }
+        }
+        async function refreshUsage() {
+            try {
+                const u = await apiAuth('/v1/me/usage', { method: 'GET' }), el = document.getElementById('acct-usage'); if (!el) return;
+                const full = u.used >= u.max * 0.9;
+                el.className = 'text-[11px] ' + (full ? 'text-amber-300' : 'text-slate-400');
+                el.innerText = `فضای حساب: ${u.used} از ${u.max} رکورد` + (full ? (u.plan === 'free' ? ' | رو به پر شدن است؛ داده‌ی محلی همچنان نامحدود است' : ' | رو به پر شدن است') : '');
+            } catch {}
+        }
+        async function acctExport() {
+            if (acct.busy) return; acctBusy(true); acctErr('');
+            try {
+                const data = await apiAuth('/v1/me/export', { method: 'GET' });
+                const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
+                a.download = `konkur_account_${new Date().toISOString().slice(0, 10)}.json`;
+                document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+                showToast(`${data.tests.length} تست دانلود شد`);
+            } catch (e) { acctErr(e.code === 'too_many_requests' ? 'دانلود بیش از حد مجاز است؛ بعداً تلاش کنید.' : e.message); }
+            finally { acctBusy(false); }
+        }
+        const fmtToman = (n) => n.toLocaleString('fa-IR');
+        async function renderPlans() {
+            const box = document.getElementById('acct-plans'); if (!box) return;
+            if (window.KONKUR_WEB_PAYMENTS === false) { box.classList.add('hidden'); return; }
+            try {
+                const { plans } = await rawApi('/v1/plans', { method: 'GET' });
+                document.getElementById('acct-plan-list').innerHTML = plans.map((p) =>
+                    `<button onclick="acctBuy('${esc(p.code)}')" class="acct-act w-full h-11 px-3 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-xl flex items-center justify-between text-xs"><span class="font-bold text-white">${esc(p.title)}</span><span class="text-amber-300 font-black">${fmtToman(p.priceToman)} تومان</span></button>`).join('');
+                const exp = acct.user && acct.user.plan === 'premium' && acct.user.planExpiresAt;
+                document.getElementById('acct-plan-exp').innerText = exp ? 'فعال تا ' + new Date(exp).toLocaleDateString('fa-IR') : '';
+                box.classList.remove('hidden');
+            } catch { box.classList.add('hidden'); }
+        }
+        async function acctBuy(code) {
+            if (acct.busy) return; acctBusy(true); acctErr('');
+            try {
+                const r = await apiAuth('/v1/billing/checkout', { body: { plan: code } });
+                acct.awaitPay = true; window.open(r.payUrl, '_blank');
+                showToast('بعد از پرداخت به اپ برگردید');
+            } catch (e) { acctErr(e.message); } finally { acctBusy(false); }
+        }
+        async function refreshAfterPay() {
+            if (!acct.awaitPay || !acct.user) return; acct.awaitPay = false;
+            try {
+                const { user } = await apiAuth('/v1/me', { method: 'GET' }); const was = acct.user.plan; acct.user = user;
+                if (user.plan === 'premium' && was !== 'premium') showToast('اشتراک Premium فعال شد 🎉');
+                openAccount();
+            } catch {}
+        }
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshAfterPay(); });
+        function resetSync() { syncState = { userId: null, cursor: 0, snap: {}, last: 0 }; try { localStorage.removeItem(SYNC_KEY); } catch {} }
+
+        // ===== Phase 2 / step 2: account (SMS-code login) =====
+        const API_BASE = window.KONKUR_API || '';
+        const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+        const acct = { user: null, token: null, exp: 0, busy: false, phone: '', cd: null };
+        class ApiError extends Error {
+            constructor(e, status) { super(e.message || 'خطای ارتباط با سرور'); this.code = e.code || 'network'; this.status = status; this.retryAfterSec = e.retryAfterSec; }
+        }
+        async function rawApi(path, { method = 'POST', body, auth = false } = {}) {
+            const headers = {};
+            if (body !== undefined) headers['Content-Type'] = 'application/json'; // server rejects an empty body that claims to be JSON
+            if (auth && acct.token) headers.Authorization = 'Bearer ' + acct.token;
+            let res;
+            try {
+                res = await fetch(API_BASE + path, { method, credentials: 'include', headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+            } catch { throw new ApiError({ code: 'network', message: 'ارتباط با سرور برقرار نشد. اینترنت را بررسی کنید.' }, 0); }
+            if (res.status === 204) return null;
+            const data = await res.json().catch(() => null);
+            if (!res.ok) throw new ApiError(data?.error || {}, res.status);
+            return data;
+        }
+        function setSession(r) {
+            if (r.refreshToken) { try { localStorage.setItem('konkur_rt', r.refreshToken); } catch {} } // app-private storage inside the APK sandbox
+            acct.user = r.user; acct.token = r.accessToken; acct.exp = Date.parse(r.accessExpiresAt);
+            try { localStorage.setItem('konkur_acct_hint', JSON.stringify({ phone: r.user.phone })); } catch {} // not a secret: only says "try silent sign-in"
+        }
+        function clearSession() { try { localStorage.removeItem('konkur_rt'); } catch {} acct.user = null; acct.token = null; acct.exp = 0; try { localStorage.removeItem('konkur_acct_hint'); } catch {} }
+        let refreshing = null;
+        function refreshSession() {
+            if (!refreshing) {
+                const attempt = () => rawApi('/v1/auth/refresh', { body: NATIVE ? { refreshToken: localStorage.getItem('konkur_rt') || '' } : {} }).then(setSession);
+                refreshing = attempt()
+                    .catch(async (e) => { if (e.code !== 'token_rotated') throw e; await new Promise((r) => setTimeout(r, 500)); return attempt(); }) // another tab rotated first
+                    .catch((e) => { if (e.status === 401) clearSession(); throw e; })
+                    .finally(() => { refreshing = null; });
+            }
+            return refreshing;
+        }
+        // Authenticated call with automatic refresh (used by upcoming sync).
+        async function apiAuth(path, opts = {}) {
+            if (!acct.token || Date.now() > acct.exp - 30000) await refreshSession();
+            try { return await rawApi(path, { ...opts, auth: true }); }
+            catch (e) { if (e.code !== 'token_expired') throw e; await refreshSession(); return rawApi(path, { ...opts, auth: true }); }
+        }
+        const maskPhone = (p) => p.replace('+98', '0').replace(/^(\d{4})\d{3}(\d{4})$/, '$1•••$2');
+        function acctPane(n) {
+            $id('acct-login').classList.toggle('hidden', n !== 'login'); $id('acct-code-pane').classList.toggle('hidden', n !== 'code'); $id('acct-user').classList.toggle('hidden', n !== 'user');
+        }
+        function acctErr(m) { const e = $id('acct-err'); e.innerText = m || ''; e.classList.toggle('hidden', !m); }
+        function acctBusy(b) { acct.busy = b; document.querySelectorAll('.acct-act').forEach((x) => { x.disabled = b; }); }
+        function renderAccount() { $id('account-btn').firstElementChild.className = acct.user ? 'fa-solid fa-user-check text-emerald-400' : 'fa-solid fa-user'; }
+        function openAccount() {
+            acctErr('');
+            if (acct.user) {
+                $id('acct-user-phone').innerText = maskPhone(acct.user.phone);
+                $id('acct-user-plan').innerText = acct.user.plan === 'premium' ? 'اشتراک Premium فعال' : 'نسخه رایگان';
+                acctPane('user'); renderSyncStatus(); refreshUsage(); renderPlans();
+            } else acctPane('login');
+            $id('accountModal').classList.remove('hidden');
+        }
+        function closeAccount() { $id('accountModal').classList.add('hidden'); }
+        function startResendTimer(sec) {
+            clearInterval(acct.cd); let s = sec; const b = $id('acct-resend');
+            const draw = () => { b.disabled = s > 0; b.innerText = s > 0 ? `ارسال مجدد تا ${s} ثانیه` : 'ارسال مجدد کد'; };
+            draw(); acct.cd = setInterval(() => { s--; draw(); if (s <= 0) clearInterval(acct.cd); }, 1000);
+        }
+        async function acctRequestCode(resend = false) {
+            if (acct.busy) return;
+            const phone = resend ? acct.phone : num($id('acct-phone').value).replace(/[\s-]/g, '');
+            if (!/^(\+98|0098|98|0)?9\d{9}$/.test(phone)) return acctErr('شماره موبایل را درست وارد کنید (مثال: 09123456789)');
+            acctErr(''); acctBusy(true);
+            try {
+                const r = await rawApi('/v1/auth/otp/request', { body: { phone } });
+                acct.phone = phone; $id('acct-sent-to').innerText = maskPhone(phone.replace(/^(\+98|0098|98)/, '0').replace(/^9/, '09'));
+                acctPane('code'); $id('acct-code').value = ''; startResendTimer(r.retryAfterSec || 60); $id('acct-code').focus();
+            } catch (e) { acctErr(e.code === 'too_many_requests' && e.retryAfterSec ? `${e.message} (حدود ${Math.ceil(e.retryAfterSec / 60)} دقیقه)` : e.message); }
+            finally { acctBusy(false); if (!resend) return; $id('acct-resend').disabled = true; }
+        }
+        async function acctVerify() {
+            if (acct.busy) return;
+            const code = num($id('acct-code').value).trim();
+            if (!/^\d{6}$/.test(code)) return acctErr('کد ۶ رقمی را وارد کنید');
+            acctErr(''); acctBusy(true);
+            try {
+                setSession(await rawApi('/v1/auth/otp/verify', { body: { phone: acct.phone, code, client: NATIVE ? 'native' : 'web' } }));
+                clearInterval(acct.cd); renderAccount(); openAccount(); showToast('وارد شدید ✅'); scheduleSync(300);
+            } catch (e) { acctErr(e.message); $id('acct-code').select(); }
+            finally { acctBusy(false); }
+        }
+        async function acctLogout() {
+            if (!confirm('از حساب خارج می‌شوید؟ اطلاعات روی این دستگاه می‌ماند.')) return;
+            acctBusy(true);
+            try { await apiAuth('/v1/auth/logout'); } catch {} // even if offline we drop the local session
+            clearSession(); acctBusy(false); renderAccount(); closeAccount(); showToast('از حساب خارج شدید');
+        }
+        async function acctDelete() {
+            if (!confirm('حساب شما برای همیشه حذف می‌شود. ادامه می‌دهید؟')) return;
+            if (!confirm('این کار قابل بازگشت نیست. مطمئن هستید؟')) return;
+            acctBusy(true);
+            try { await apiAuth('/v1/me/delete', { body: { confirm: true } }); clearSession(); renderAccount(); closeAccount(); resetSync(); showToast('حساب حذف شد'); }
+            catch (e) { acctErr(e.message); } finally { acctBusy(false); }
+        }
+        async function initAccount() {
+            window.__syncReady = true;
+            renderAccount();
+            document.addEventListener('visibilitychange', () => { if (!document.hidden) scheduleSync(500); });
+            window.addEventListener('online', () => scheduleSync(500));
+            let hint = null; try { hint = JSON.parse(localStorage.getItem('konkur_acct_hint')); } catch {}
+            if (!hint) return;
+            try { await refreshSession(); } catch (e) { if (e.status === 401) showToast('نشست شما منقضی شده؛ دوباره وارد شوید'); }
+            renderAccount(); scheduleSync(500);
+        }
+
+        // TIMER LOGIC
+        function setTimerMode(mode) {
+            const box = document.getElementById('custom-time-box');
+            if (mode === 'learning') {
+                perTestSeconds = 5 * 60;
+                box.classList.add('hidden');
+                document.getElementById('timer-per-test-label').innerText = '۵ دقیقه';
+            } else if (mode === 'speed') {
+                perTestSeconds = 3 * 60;
+                box.classList.add('hidden');
+                document.getElementById('timer-per-test-label').innerText = '۳ دقیقه';
+            } else {
+                box.classList.remove('hidden');
+                applyCustomTimer();
+                return; // applyCustomTimer already calls resetTimer()
+            }
+            resetTimer(false);
+        }
+
+        function applyCustomTimer() {
+            const mins = Math.max(0, parseInt(document.getElementById('custom-minutes').value) || 0);
+            const secs = Math.max(0, Math.min(59, parseInt(document.getElementById('custom-seconds').value) || 0));
+            perTestSeconds = Math.max(5, mins * 60 + secs); // at least 5s guard
+            const label = secs > 0 ? `${mins} دقیقه و ${secs} ثانیه` : `${mins} دقیقه`;
+            document.getElementById('timer-per-test-label').innerText = label;
+            resetTimer(false);
+        }
+
+        function toggleAutoTimer() {
+            autoTimerEnabled = !autoTimerEnabled;
+            const el = document.getElementById('auto-timer-toggle');
+            el.className = `toggle-switch ${autoTimerEnabled ? 'on' : ''}`;
+            if (autoTimerEnabled && !timerRunning && timerSecondsLeft === perTestSeconds) {
+                startTimerRun();
+            }
+        }
+
+        function toggleTimer() {
+            if (timerRunning) {
+                stopTimerRun();
+            } else {
+                startTimerRun();
+            }
+        }
+
+        function elapsedSec() { return Math.floor((timerPausedElapsed + (timerRunning ? Date.now() - timerStartedAt : 0)) / 1000); }
+        function tick() {
+            const e = elapsedSec();
+            if (e <= perTestSeconds) { timerSecondsLeft = perTestSeconds - e; timerOvertimeSeconds = 0; }
+            else {
+                timerSecondsLeft = 0; timerOvertimeSeconds = e - perTestSeconds;
+                if (!timerTimeoutToastShown) { showToast('زمان این تست به پایان رسید! (در حال شمارش تأخیر...)'); timerTimeoutToastShown = true; }
+            }
+            updateTimerDisplay();
+        }
+        function startTimerRun() {
+            const btn = document.getElementById('timer-toggle-btn');
+            timerRunning = true; timerEngagedForCurrentTest = true; timerStartedAt = Date.now();
+            btn.innerText = 'توقف';
+            btn.className = "px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition";
+            clearInterval(timerInterval);
+            timerInterval = setInterval(tick, 500);
+        }
+
+        function stopTimerRun() {
+            const btn = document.getElementById('timer-toggle-btn');
+            timerPausedElapsed += Date.now() - timerStartedAt;
+            clearInterval(timerInterval); timerRunning = false;
+            btn.innerText = 'ادامه';
+            btn.className = "px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition";
+        }
+
+        function resetTimer(autoStart = autoTimerEnabled) {
+            clearInterval(timerInterval);
+            timerRunning = false; timerEngagedForCurrentTest = false; timerPausedElapsed = 0;
+            timerSecondsLeft = perTestSeconds; timerOvertimeSeconds = 0; timerTimeoutToastShown = false;
+            updateTimerDisplay();
+            const btn = document.getElementById('timer-toggle-btn');
+            btn.innerText = 'شروع';
+            btn.className = "px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition";
+            if (autoStart) startTimerRun();
+        }
+
+        function updateTimerDisplay() {
+            const disp = document.getElementById('timer-display');
+            if (timerOvertimeSeconds > 0) {
+                const m = Math.floor(timerOvertimeSeconds / 60).toString().padStart(2, '0');
+                const s = (timerOvertimeSeconds % 60).toString().padStart(2, '0');
+                disp.innerText = `+${m}:${s}`;
+                disp.className = "text-xl font-black font-mono text-rose-500 animate-pulse";
+                return;
+            }
+            const m = Math.floor(timerSecondsLeft / 60).toString().padStart(2, '0');
+            const s = (timerSecondsLeft % 60).toString().padStart(2, '0');
+            disp.innerText = `${m}:${s}`;
+            if (timerSecondsLeft < 30) {
+                disp.className = "text-xl font-black font-mono text-rose-500 animate-pulse";
+            } else {
+                disp.className = "text-xl font-black font-mono text-emerald-400";
+            }
+        }
+
+        // SPEED REWARD EFFECT (answered early)
+        function showSpeedEffect(savedSeconds) {
+            if (savedSeconds <= 0) return;
+            const layer = document.getElementById('speed-flash-layer');
+            const wrap = document.createElement('div');
+            wrap.className = 'speed-flash-card relative';
+            wrap.innerHTML = `
+                <div class="speed-flash-burst"></div>
+                <div class="relative">
+                    <div class="text-3xl mb-1">⚡✅</div>
+                    <div class="text-emerald-300 font-black text-sm">آفرین! زودتر جواب دادی</div>
+                    <div class="text-white font-black text-lg mt-0.5">${savedSeconds} ثانیه صرفه‌جویی شد</div>
+                </div>
+            `;
+            layer.innerHTML = '';
+            layer.appendChild(wrap);
+            setTimeout(() => { wrap.remove(); }, 1300);
+        }
+
+        // LATE / OVERTIME EFFECT (answered after the allotted time ran out)
+        function showLateEffect(lateSeconds) {
+            if (lateSeconds <= 0) return;
+            const layer = document.getElementById('speed-flash-layer');
+            const wrap = document.createElement('div');
+            wrap.className = 'late-flash-card relative';
+            wrap.innerHTML = `
+                <div class="late-flash-burst"></div>
+                <div class="relative">
+                    <div class="text-3xl mb-1">⏰⚠️</div>
+                    <div class="text-rose-300 font-black text-sm">این تست دیر جواب داده شد</div>
+                    <div class="text-white font-black text-lg mt-0.5">${lateSeconds} ثانیه عقب افتادی</div>
+                </div>
+            `;
+            layer.innerHTML = '';
+            layer.appendChild(wrap);
+            setTimeout(() => { wrap.remove(); }, 1300);
+        }
+
+        // CONTINUE INCOMPLETE PARTS (any past part, not just the latest one)
+        function openContinuePartsModal() {
+            renderContinuePartsList();
+            document.getElementById('continuePartsModal').classList.remove('hidden');
+        }
+        function closeContinuePartsModal() {
+            document.getElementById('continuePartsModal').classList.add('hidden');
+        }
+
+        function getIncompleteSessions() {
+            return sessionsMeta
+                .filter(s => typeof s.endNo === 'number' && s.lastNo < s.endNo)
+                .sort((a, b) => b.timestamp - a.timestamp);
+        }
+
+        function renderContinuePartsList() {
+            const list = document.getElementById('continue-parts-list');
+            const incomplete = getIncompleteSessions();
+            if (incomplete.length === 0) {
+                list.innerHTML = '<p class="text-xs text-slate-500 text-center py-8">در حال حاضر پارت ناتمامی وجود ندارد.</p>';
+                return;
+            }
+            list.innerHTML = incomplete.map(s => {
+                const remaining = s.endNo - s.lastNo;
+                const done = s.lastNo - s.startNo + 1;
+                const totalPlanned = s.endNo - s.startNo + 1;
+                return `
+                    <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-sm text-white">${esc(s.subject)} <span class="text-slate-500 font-normal text-[11px]">/ ${esc(s.topic)}</span></span>
+                            <span class="text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-md">${done} از ${totalPlanned}</span>
+                        </div>
+                        <div class="text-[10px] text-slate-400">منبع: ${esc(s.source)} | بازه: ${s.startNo} تا ${s.endNo}</div>
+                        <div class="text-[10px] text-amber-400">باقیمانده: ${remaining} تست (از شماره ${s.lastNo + 1})</div>
+                        <button onclick="applyContinueSession('${s.id}')" class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2 rounded-lg transition">
+                            <i class="fa-solid fa-forward ml-1"></i> ادامه از تست ${s.lastNo + 1}
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function applyContinueSession(id) {
+            const s = sessionsMeta.find(x => x.id === id);
+            if (!s) return;
+            if (currentSessionTests.length && !confirm('تست‌های ذخیره‌نشده‌ی پارت جاری کنار گذاشته می‌شود. ادامه؟')) return;
+            currentSessionTests = [];
+            document.getElementById('fast-subject').value = s.subject;
+            document.getElementById('fast-source').value = s.source;
+            document.getElementById('fast-topic').value = s.topic;
+            document.getElementById('fast-start-no').value = s.lastNo + 1;
+            document.getElementById('fast-end-no').value = s.endNo;
+            currentPointerNo = s.lastNo + 1;
+            currentSessionMetaId = s.id;
+            document.getElementById('current-test-num').innerText = currentPointerNo;
+            closeContinuePartsModal();
+            resetTimer();
+            showToast(`ادامه از تست شماره ${currentPointerNo}`);
+        }
+
+        function initSessionRange() {
+            const startNo = parseInt(num(document.getElementById('fast-start-no').value));
+            if (!isNaN(startNo) && currentSessionTests.length === 0) {
+                currentPointerNo = startNo;
+                currentSessionMetaId = null; // manual range change means this is a fresh part unless continued via modal
+                document.getElementById('current-test-num').innerText = currentPointerNo;
+                if (autoTimerEnabled) resetTimer();
+            }
+        }
+
+        function recordTapAnswer(val) {
+            const subject = document.getElementById('fast-subject').value;
+            const source = document.getElementById('fast-source').value || 'منبع عمومی';
+            const topic = document.getElementById('fast-topic').value || 'بدون مبحث';
+            const startNo = parseInt(num(document.getElementById('fast-start-no').value)) || 1;
+
+            if (currentSessionTests.length === 0 && currentPointerNo === 0) {
+                currentPointerNo = startNo;
+            }
+
+            let status = 'pending';
+            let option = val;
+
+            if (val === 'doubt') { status = 'doubt'; option = 'شک'; }
+            else if (val === 'empty') { status = 'empty'; option = 'نزده'; }
+
+            // Speed feedback: green if answered early, red if answered after time was already up
+            if (timerEngagedForCurrentTest && val !== 'empty') {
+                if (timerOvertimeSeconds > 0) {
+                    showLateEffect(timerOvertimeSeconds);
+                } else if (timerSecondsLeft > 0) {
+                    showSpeedEffect(timerSecondsLeft);
+                }
+            }
+
+            currentSessionTests.push({
+                timeSpent: timerEngagedForCurrentTest ? elapsedSec() : null,
+                ts: Date.now(),
+                testNo: currentPointerNo,
+                subject,
+                source,
+                topic,
+                val: option,
+                status: status,
+                reason: '',
+                note: ''
+            });
+
+            currentPointerNo++;
+            resetTimer(); // Auto reset (and auto-start, if enabled) timer for next test
+            updateTapUI();
+        }
+
+        function undoLastTap() {
+            if (currentSessionTests.length > 0) {
+                currentSessionTests.pop();
+                currentPointerNo--;
+                updateTapUI();
+            }
+        }
+
+        function updateTapUI() {
+            saveDraft();
+            const startNo = parseInt(num(document.getElementById('fast-start-no').value)) || 1;
+            if (currentSessionTests.length === 0 && currentPointerNo === 0) {
+                currentPointerNo = startNo;
+            }
+            document.getElementById('current-test-num').innerText = currentPointerNo;
+            
+            const stream = document.getElementById('tap-stream');
+            if (currentSessionTests.length === 0) {
+                stream.innerHTML = '<span class="text-[11px] text-slate-600">هنوز تستی ثبت نشده...</span>';
+                return;
+            }
+
+            stream.innerHTML = currentSessionTests.map((t) => `
+                <span class="px-2 py-0.5 rounded-lg border border-slate-700 bg-slate-800 text-[10px] text-slate-200">
+                    تست ${t.testNo}: <strong class="text-blue-400">${esc(t.val)}</strong>
+                </span>
+            `).join('');
+        }
+
+        // REVIEW MODAL & EDIT TOPIC
+        function openReviewModal() {
+            if (currentSessionTests.length === 0) {
+                alert('لطفاً ابتدا چند تست ثبت کنید.');
+                return;
+            }
+
+            const list = document.getElementById('review-list');
+            list.innerHTML = '';
+            const prevScroll = list.scrollTop;
+            const pct = getCurrentPartPercentage();
+            if (pct !== null) {
+                const summary = document.createElement('div');
+                summary.className = 'bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-3 mb-2 text-xs';
+                const cc = currentSessionTests.filter(t => t.status === 'correct').length;
+                const ww = currentSessionTests.filter(t => t.status === 'wrong').length;
+                summary.innerHTML = `<div class="flex justify-between items-center"><span class="font-bold text-indigo-200">نتیجه فعلی پارت</span><span dir="ltr" class="font-black text-lg ${pct >= 50 ? 'text-emerald-400' : 'text-rose-400'}">${pct}٪</span></div><div class="text-[10px] text-slate-500 mt-1">${cc} درست · ${ww} نادرست · ${currentSessionTests.length} تست</div>`;
+                list.appendChild(summary);
+            }
+            const pc = currentSessionTests.filter(t => t.status === 'pending').length;
+            if (pc) {
+                const b = document.createElement('button');
+                b.className = 'w-full bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded-xl py-2.5 text-xs font-bold';
+                b.textContent = `${pc} تستِ بدون وضعیت را «درست» حساب کن`;
+                b.onclick = () => { currentSessionTests.forEach(t => { if (t.status === 'pending') t.status = 'correct'; }); saveDraft(); openReviewModal(); };
+                list.appendChild(b);
+            }
+
+            currentSessionTests.forEach((t, i) => {
+                const item = document.createElement('div');
+                item.className = 'bg-slate-950 border border-slate-800 p-3 rounded-xl space-y-2';
+                item.innerHTML = `
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="font-bold text-white">تست #${t.testNo}</span>
+                        <div class="flex gap-1">
+                            <button onclick="setReviewStatus(${i}, 'correct')" class="px-2 py-1 rounded-lg border text-[10px] ${t.status === 'correct' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-900 border-slate-800 text-slate-400'}">درست</button>
+                            <button onclick="setReviewStatus(${i}, 'wrong')" class="px-2 py-1 rounded-lg border text-[10px] ${t.status === 'wrong' ? 'bg-rose-600 border-rose-500 text-white' : 'bg-slate-900 border-slate-800 text-slate-400'}">نادرست</button>
+                            <button onclick="setReviewStatus(${i}, 'doubt')" class="px-2 py-1 rounded-lg border text-[10px] ${t.status === 'doubt' ? 'bg-amber-600 border-amber-500 text-white' : 'bg-slate-900 border-slate-800 text-slate-400'}">شک‌دار</button>
+                            <button onclick="setReviewStatus(${i}, 'empty')" class="px-2 py-1 rounded-lg border text-[10px] ${t.status === 'empty' ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-900 border-slate-800 text-slate-400'}">نزده</button>
+                        </div>
+                    </div>
+                    <!-- Edit Topic & Source on the fly -->
+                    <div class="grid grid-cols-2 gap-2 text-[10px]">
+                        <input type="text" placeholder="مبحث..." value="${esc(t.topic)}" onchange="setReviewTopic(${i}, this.value)" class="bg-slate-900 border border-slate-800 rounded-lg p-1.5 text-slate-300">
+                        <input type="text" placeholder="منبع..." value="${esc(t.source)}" onchange="setReviewSource(${i}, this.value)" class="bg-slate-900 border border-slate-800 rounded-lg p-1.5 text-slate-300">
+                    </div>
+                    ${t.status !== 'correct' && t.status !== 'pending' ? `
+                    <div class="grid grid-cols-2 gap-2 pt-1">
+                        <select onchange="setReviewReason(${i}, this.value)" class="bg-slate-900 border border-slate-800 rounded-lg text-[10px] p-1.5 text-slate-300">
+                            <option value="">علت خطا/شک...</option>
+                            <option value="بی‌دقتی" ${t.reason==='بی‌دقتی'?'selected':''}>بی‌دقتی در محاسبه/صورت سوال</option>
+                            <option value="عدم تسلط" ${t.reason==='عدم تسلط'?'selected':''}>عدم تسلط علمی</option>
+                            <option value="فراموشی" ${t.reason==='فراموشی'?'selected':''}>فراموشی فرمول/نکته</option>
+                            <option value="کمبود وقت" ${t.reason==='کمبود وقت'?'selected':''}>کمبود وقت</option>
+                            <option value="دام آموزشی" ${t.reason==='دام آموزشی'?'selected':''}>دام آموزشی</option>
+                        </select>
+                        <input type="text" placeholder="نکته مهم این تست..." value="${esc(t.note)}" onchange="setReviewNote(${i}, this.value)" class="bg-slate-900 border border-slate-800 rounded-lg text-[10px] p-1.5 text-slate-300">
+                    </div>`:''}
+                `;
+                list.appendChild(item);
+            });
+
+            list.scrollTop = prevScroll;
+            document.getElementById('reviewModal').classList.remove('hidden');
+        }
+
+        function setReviewStatus(index, status) { currentSessionTests[index].status = status; saveDraft(); openReviewModal(); }
+        function setReviewTopic(index, topic) { currentSessionTests[index].topic = topic; saveDraft(); }
+        function setReviewSource(index, source) { currentSessionTests[index].source = source; saveDraft(); }
+        function setReviewReason(index, reason) { currentSessionTests[index].reason = reason; saveDraft(); }
+        function setReviewNote(index, note) { currentSessionTests[index].note = note; saveDraft(); }
+        function closeReviewModal() { document.getElementById('reviewModal').classList.add('hidden'); }
+
+        function saveSessionData() {
+            const pend = currentSessionTests.filter(t => t.status === 'pending').length;
+            if (pend) { showToast(`برای ${pend} تست هنوز درست/نادرست مشخص نشده`); return; }
+            const today = new Date().toLocaleDateString('fa-IR');
+            let gainedXp = 0;
+
+            // Determine (or create) the batch/part id BEFORE building test objects,
+            // so every test in this save carries a link back to its part.
+            let batchId = currentSessionMetaId;
+            if (!batchId && currentSessionTests.length > 0) {
+                batchId = 'sess_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+            }
+
+            currentSessionTests.forEach(t => {
+                tests.unshift({
+                    id: uid(), timeSpent: t.timeSpent ?? null, ts: t.ts || Date.now(),
+                    sessionId: batchId,
+                    subject: t.subject,
+                    source: t.source || 'عمومی',
+                    topic: t.topic || 'عمومی',
+                    testNo: t.testNo,
+                    val: t.val,
+                    status: t.status,
+                    reason: t.reason,
+                    note: t.note,
+                    important: false,
+                    later: false,
+                    date: today
+                });
+
+                // XP Calculation
+                gainedXp += 10; // Base per test
+                if (t.status === 'correct') gainedXp += 15;
+                if (t.reason) gainedXp += 10; // Reward for analyzing error
+            });
+
+            persist();
+            // توجه: دیگر XP را جداگانه در localStorage جمع نمی‌کنیم.
+            // سطح کاربر همیشه مستقیم از روی آرایه‌ی tests محاسبه می‌شود (تابع getUserXp)
+            // به همین دلیل اگر کاربر تستی را پاک کند، سطح او هم بلافاصله متناسب کم می‌شود.
+
+            // --- Track this "part" so it can be resumed later even if it's not the last one ---
+            if (currentSessionTests.length > 0) {
+                const testNos = currentSessionTests.map(t => t.testNo);
+                const batchMin = Math.min(...testNos);
+                const batchMax = Math.max(...testNos);
+                const declaredEnd = parseInt(num(document.getElementById('fast-end-no').value));
+                const first = currentSessionTests[0];
+
+                const existing = sessionsMeta.find(s => s.id === batchId);
+                if (existing) {
+                    existing.lastNo = Math.max(existing.lastNo, batchMax);
+                    existing.timestamp = Date.now();
+                } else {
+                    sessionsMeta.push({
+                        id: batchId,
+                        subject: first.subject,
+                        source: first.source || 'عمومی',
+                        topic: first.topic || 'عمومی',
+                        startNo: batchMin,
+                        endNo: (!isNaN(declaredEnd) && declaredEnd >= batchMax) ? declaredEnd : batchMax,
+                        lastNo: batchMax,
+                        timestamp: Date.now()
+                    });
+                }
+                persist();
+            }
+
+            currentSessionTests = [];
+            currentPointerNo = 0;
+            currentSessionMetaId = null;
+            resetTimer(false);
+            document.getElementById('fast-start-no').value = '';
+            document.getElementById('fast-end-no').value = '';
+            updateTapUI();
+            closeReviewModal();
+            updateUserLevelUI();
+            showToast(`بسته ذخیره شد! +${gainedXp} XP دریافت کردید 🔥`);
+            switchTab('dashboard');
+        }
+
+        // GAMIFICATION & LEVEL SYSTEM LOGIC
+        // XP همیشه به‌صورت زنده از روی تست‌های موجود در آرایه‌ی tests محاسبه می‌شود
+        // (نه یک شمارنده‌ی جداگانه که فقط زیاد می‌شود). به این ترتیب اگر کاربر
+        // یک یا چند تست را حذف کند، XP و سطح او هم بلافاصله و به‌درستی کاهش می‌یابد.
+        function getUserXp() {
+            let xp = 0;
+            tests.forEach(t => {
+                xp += 10; // امتیاز پایه هر تست
+                if (t.status === 'correct') xp += 15; // پاداش پاسخ درست
+                if (t.reason) xp += 10; // پاداش تحلیل علت خطا/شک
+            });
+            return xp;
+        }
+        
+        function updateUserLevelUI() {
+            renderGoal();
+            const xp = getUserXp();
+            let currentLevel = levels[0];
+            let nextLevel = levels[1];
+
+            for (let i = levels.length - 1; i >= 0; i--) {
+                if (xp >= levels[i].minXp) {
+                    currentLevel = levels[i];
+                    nextLevel = levels[i + 1] || levels[i];
+                    break;
+                }
+            }
+
+            document.getElementById('user-level-title').innerText = `سطح ${currentLevel.level}: ${currentLevel.name}`;
+            document.getElementById('user-xp-badge').innerText = `${xp} XP`;
+            
+            // Progress Bar
+            let progressPerc = 100;
+            if (nextLevel.level !== currentLevel.level) {
+                const range = nextLevel.minXp - currentLevel.minXp;
+                const done = xp - currentLevel.minXp;
+                progressPerc = Math.min(100, Math.round((done / range) * 100));
+            }
+            document.getElementById('level-progress-bar').style.width = `${progressPerc}%`;
+
+            // Achievements Tab Sync
+            document.getElementById('achieve-level-name').innerText = `سطح ${currentLevel.level}: ${currentLevel.name}`;
+            document.getElementById('achieve-total-xp').innerText = xp;
+        }
+
+        // Range-based per-subject leveling: every TESTS_PER_LEVEL tests in a subject = 1 level in that subject
+        const TESTS_PER_LEVEL = 100;
+        const subjectIcons = {
+            'حسابان': 'fa-calculator',
+            'هندسه': 'fa-draw-polygon',
+            'گسسته': 'fa-diagram-project',
+            'فیزیک': 'fa-atom',
+            'شیمی': 'fa-flask'
+        };
+
+        function renderAchievementsTab() {
+            const container = document.getElementById('achievements-list');
+            container.innerHTML = '';
+
+            const now = new Date(), monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+            const monthTests = tests.filter(t => t.ts >= monthStart);
+            const weekStart = Date.now() - 7 * 864e5;
+            const weekTests = tests.filter(t => t.ts >= weekStart);
+            const analyzed = tests.filter(t => t.reason).length;
+            const streak = calcStreak();
+
+            const challenges = [
+                { icon:'fa-calendar-check', title:'ماه پرقدرت', desc:'۵۰۰ تست در یک ماه', done:monthTests.length, target:500, suffix:'تست' },
+                { icon:'fa-fire', title:'هفته داغ', desc:'۱۰۰ تست در ۷ روز اخیر', done:weekTests.length, target:100, suffix:'تست' },
+                { icon:'fa-link', title:'زنجیره ۷ روزه', desc:'۷ روز فعال', done:streak, target:7, suffix:'روز' },
+                { icon:'fa-magnifying-glass-chart', title:'تحلیل‌گر', desc:'۲۰ تست با ثبت علت خطا', done:analyzed, target:20, suffix:'تحلیل' },
+                { icon:'fa-layer-group', title:'شروع جدی', desc:'۱۰۰ تست در یک درس', done:Math.max(...['حسابان','هندسه','گسسته','فیزیک','شیمی'].map(s=>tests.filter(t=>t.subject===s).length),0), target:100, suffix:'تست' }
+            ];
+            const challengeBox = document.getElementById('challenge-list');
+            challengeBox.innerHTML = challenges.map(c => {
+                const p = Math.min(100, Math.round(c.done / c.target * 100)), unlocked = c.done >= c.target;
+                return `<div class="bg-slate-950 border ${unlocked ? 'border-amber-500/30' : 'border-slate-800'} rounded-xl p-3">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-9 h-9 rounded-lg ${unlocked ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400'} flex items-center justify-center"><i class="fa-solid ${c.icon}"></i></div>
+                        <div class="flex-1 min-w-0"><div class="text-xs font-bold text-white">${c.title} ${unlocked ? '🏆' : ''}</div><div class="text-[10px] text-slate-500">${c.desc}</div></div>
+                        <span class="text-[10px] font-black ${unlocked ? 'text-amber-400' : 'text-slate-400'}">${Math.min(c.done,c.target)} / ${c.target}</span>
+                    </div>
+                    <div class="mt-2 w-full bg-slate-800 h-1.5 rounded-full overflow-hidden"><div class="bg-gradient-to-r from-indigo-500 to-emerald-400 h-full" style="width:${p}%"></div></div>
+                </div>`;
+            }).join('');
+
+            const subjects = ['حسابان', 'هندسه', 'گسسته', 'فیزیک', 'شیمی'];
+            subjects.forEach(subj => {
+                const count = tests.filter(t => t.subject === subj).length;
+                const level = Math.floor(count / TESTS_PER_LEVEL), intoLevel = count % TESTS_PER_LEVEL;
+                const remaining = TESTS_PER_LEVEL - intoLevel, progressPerc = Math.round(intoLevel / TESTS_PER_LEVEL * 100);
+                const card = document.createElement('div');
+                card.className = 'p-3 rounded-xl border bg-slate-900 border-slate-800 space-y-2';
+                card.innerHTML = `<div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg ${level > 0 ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-500'} font-bold"><i class="fa-solid ${subjectIcons[subj] || 'fa-book'}"></i></div><div class="flex-1"><div class="font-bold text-xs text-white">${subj}</div><div class="text-[10px] text-slate-400">${count} تست ثبت‌شده</div></div><span class="text-[11px] font-black ${level > 0 ? 'text-amber-400' : 'text-slate-500'} bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">سطح ${level}</span></div><div><div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden"><div class="bg-gradient-to-r from-amber-500 to-orange-500 h-full level-progress" style="width:${progressPerc}%"></div></div><div class="text-[9px] text-slate-500 mt-1">${remaining} تست دیگر تا سطح ${level + 1}</div></div>`;
+                container.appendChild(card);
+            });
+        }
+
+        // FOLDER SYSTEM DASHBOARD (SUBJECT -> TOPICS)
+        function updateDashboard() {
+            const total = tests.length;
+            const correct = tests.filter(t => t.status === 'correct').length;
+            const wrong = tests.filter(t => t.status === 'wrong').length;
+            const doubt = tests.filter(t => t.status === 'doubt').length;
+            const empty = tests.filter(t => t.status === 'empty').length;
+
+            document.getElementById('stat-total').innerText = total;
+
+            let percentage = 0;
+            if (total > 0) {
+                percentage = Math.round(((3 * correct - wrong) / (3 * total)) * 100);
+            }
+            document.getElementById('stat-percentage').dir = 'ltr';
+            document.getElementById('stat-percentage').innerText = `${percentage}٪`;
+
+            renderChart();
+            renderInsights();
+            renderFolderTree();
+        }
+
+        function renderChart() {
+            const reasons = {};
+            tests.filter(t => t.reason).forEach(t => {
+                reasons[t.reason] = (reasons[t.reason] || 0) + 1;
+            });
+
+            const labels = Object.keys(reasons);
+            const data = Object.values(reasons);
+            if (typeof Chart === 'undefined') return;
+            const ctx = document.getElementById('reasonsChart').getContext('2d');
+
+            if (chartInstance) chartInstance.destroy();
+            if (labels.length === 0) return;
+
+            chartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#10b981'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#94a3b8', font: { family: 'Vazirmatn', size: 10 } } }
+                    }
+                }
+            });
+        }
+
+        function renderFolderTree() {
+            const container = document.getElementById('subject-folders-list');
+            container.innerHTML = '';
+
+            const subjects = ['حسابان', 'هندسه', 'گسسته', 'فیزیک', 'شیمی'];
+
+            subjects.forEach(subj => {
+                const subjTests = tests.filter(t => t.subject === subj);
+                if (subjTests.length === 0) return;
+
+                const totalSubj = subjTests.length;
+                const correctSubj = subjTests.filter(t => t.status === 'correct').length;
+                const wrongSubj = subjTests.filter(t => t.status === 'wrong').length;
+                const percSubj = Math.round(((3 * correctSubj - wrongSubj) / (3 * totalSubj)) * 100) || 0;
+
+                // Group topics inside subject
+                const topicsMap = {};
+                subjTests.forEach(t => {
+                    const top = t.topic || 'بدون مبحث';
+                    if (!topicsMap[top]) topicsMap[top] = { total: 0, correct: 0, wrong: 0, reasons: {} };
+                    topicsMap[top].total++;
+                    if (t.status === 'correct') topicsMap[top].correct++;
+                    if (t.status === 'wrong') topicsMap[top].wrong++;
+                    if (t.reason) topicsMap[top].reasons[t.reason] = (topicsMap[top].reasons[t.reason] || 0) + 1;
+                });
+
+                const folder = document.createElement('div');
+                folder.className = 'bg-slate-950 rounded-xl border border-slate-800 overflow-hidden';
+                
+                let topicsHtml = '';
+                Object.entries(topicsMap).forEach(([topName, topData]) => {
+                    const topPerc = Math.round(((3 * topData.correct - topData.wrong) / (3 * topData.total)) * 100) || 0;
+                    
+                    // Main Reason for this topic
+                    let mainReason = '';
+                    let maxRCount = 0;
+                    Object.entries(topData.reasons).forEach(([r, count]) => {
+                        if (count > maxRCount) { maxRCount = count; mainReason = r; }
+                    });
+                    topicsHtml += `
+                        <div class="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/80 space-y-1.5 text-xs">
+                            <div class="flex justify-between items-center">
+                                <span class="font-bold text-slate-200">📄 ${esc(topName)}</span>
+                                <span class="font-black ${topPerc >= 50 ? 'text-emerald-400' : 'text-rose-400'}">${topPerc}٪</span>
+                            </div>
+                            <div class="flex justify-between text-[10px] text-slate-400">
+                                <span>تعداد تست: ${topData.total} (درست: ${topData.correct} | نادرست: ${topData.wrong})</span>
+                                ${maxRCount > 0 ? `<span class="text-rose-400">ضعف: ${mainReason}</span>` : ''}
+                            </div>
+                            <button onclick="openAnswerSheet(${esc(JSON.stringify(subj))}, ${esc(JSON.stringify(topName))})" class="w-full mt-1 text-[10px] bg-gradient-to-l from-indigo-600/20 to-blue-600/20 hover:from-indigo-600/30 hover:to-blue-600/30 text-indigo-300 border border-indigo-500/30 py-1.5 rounded-lg font-bold flex items-center justify-center gap-1.5 transition">
+                                <i class="fa-solid fa-table-cells"></i> پاسخ‌برگ هوشمند
+                            </button>
+                        </div>
+                    `;
+                });
+
+                folder.innerHTML = `
+                    <div onclick="toggleFolder('${subj}')" class="p-3 bg-slate-900 flex justify-between items-center cursor-pointer border-b border-slate-800/50">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-folder text-amber-400 text-lg"></i>
+                            <div>
+                                <span class="font-black text-sm text-white">${subj}</span>
+                                <span class="text-[10px] text-slate-400 block">${totalSubj} تست در مجموع | ${Object.keys(topicsMap).length} مبحث</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-md border border-blue-500/20">${percSubj}٪</span>
+                            <i id="icon-folder-${subj}" class="fa-solid fa-chevron-down text-slate-400 text-xs transition"></i>
+                        </div>
+                    </div>
+                    <div id="folder-content-${subj}" class="hidden p-3 space-y-2 bg-slate-950/90">
+                        ${topicsHtml}
+                    </div>
+                `;
+                container.appendChild(folder);
+            });
+
+            if (container.children.length === 0) {
+                container.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">هنوز تستی ثبت نشده است.</p>';
+            }
+        }
+
+        function toggleFolder(subj) {
+            const content = document.getElementById(`folder-content-${subj}`);
+            const icon = document.getElementById(`icon-folder-${subj}`);
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                icon.className = "fa-solid fa-chevron-up text-slate-400 text-xs transition";
+            } else {
+                content.classList.add('hidden');
+                icon.className = "fa-solid fa-chevron-down text-slate-400 text-xs transition";
+            }
+        }
+
+        // HISTORY: grouped by "part" (session) so a whole part or a single test can be fixed/removed
+        let historyGroups = [];
+        let expandedGroups = new Set();
+        let editPartIndex = null;
+        let editTestId = null;
+
+        function renderHistory() {
+            const container = document.getElementById('testHistoryList');
+            container.innerHTML = '';
+            historyGroups = [];
+
+            if (tests.length === 0) {
+                container.innerHTML = '<p class="text-xs text-slate-500 text-center py-8">تاریخچه‌ای یافت نشد.</p>';
+                return;
+            }
+
+            const groupMap = new Map();
+            tests.forEach(t => {
+                const key = t.sessionId || `legacy_${esc(t.subject)}__${esc(t.topic)}__${esc(t.source)}__${esc(t.date)}`;
+                if (!groupMap.has(key)) groupMap.set(key, []);
+                groupMap.get(key).push(t);
+            });
+            groupMap.forEach((groupTests, key) => historyGroups.push({ key, tests: groupTests }));
+
+            historyGroups.forEach((group, idx) => {
+                const gt = group.tests;
+                const first = gt[0];
+                const total = gt.length;
+                const correct = gt.filter(t => t.status === 'correct').length;
+                const wrong = gt.filter(t => t.status === 'wrong').length;
+                const perc = total > 0 ? Math.round(((3 * correct - wrong) / (3 * total)) * 100) : 0;
+                const nos = gt.map(t => parseInt(t.testNo) || 0);
+                const rangeMin = Math.min(...nos);
+                const rangeMax = Math.max(...nos);
+                const isExpanded = expandedGroups.has(group.key);
+
+                const groupEl = document.createElement('div');
+                groupEl.className = 'bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden';
+                groupEl.innerHTML = `
+                    <div class="p-3 flex justify-between items-center gap-2 cursor-pointer" onclick="toggleHistoryGroupExpand(${idx})">
+                        <div class="min-w-0">
+                            <div class="font-bold text-sm text-white truncate">${esc(first.subject)} <span class="text-slate-500 font-normal text-[11px]">/ ${esc(first.topic)}</span></div>
+                            <div class="text-[10px] text-slate-400">منبع: ${esc(first.source)} | بازه: ${rangeMin}-${rangeMax} | ${total} تست | ${esc(first.date)}</div>
+                        </div>
+                        <div class="flex items-center gap-1.5 flex-shrink-0">
+                            <span class="text-[10px] font-black ${perc >= 50 ? 'text-emerald-400' : 'text-rose-400'} bg-slate-950 px-2 py-1 rounded-lg border border-slate-800">${perc}٪</span>
+                            <i class="fa-solid ${isExpanded ? 'fa-chevron-up' : 'fa-chevron-down'} text-slate-500 text-xs"></i>
+                        </div>
+                    </div>
+                    <div id="history-group-${idx}" class="${isExpanded ? '' : 'hidden'} border-t border-slate-800/70 p-2.5 space-y-2 bg-slate-950/60">
+                        <div class="flex gap-2">
+                            <button onclick="event.stopPropagation(); openEditPartModal(${idx})" class="flex-1 text-[10px] bg-blue-600/15 hover:bg-blue-600/25 text-blue-400 border border-blue-500/25 py-1.5 rounded-lg font-bold"><i class="fa-solid fa-pen ml-1"></i> ویرایش کل پارت</button>
+                            <button onclick="event.stopPropagation(); deleteHistoryGroup(${idx})" class="flex-1 text-[10px] bg-rose-600/15 hover:bg-rose-600/25 text-rose-400 border border-rose-500/25 py-1.5 rounded-lg font-bold"><i class="fa-solid fa-trash ml-1"></i> حذف کل پارت</button>
+                        </div>
+                        ${gt.map(t => renderHistoryTestRow(t)).join('')}
+                    </div>
+                `;
+                container.appendChild(groupEl);
+            });
+        }
+
+        function renderHistoryTestRow(t) {
+            let badge = '';
+            if (t.status === 'correct') badge = '<span class="text-emerald-400 font-bold">درست</span>';
+            else if (t.status === 'wrong') badge = '<span class="text-rose-400 font-bold">نادرست</span>';
+            else if (t.status === 'doubt') badge = '<span class="text-amber-400 font-bold">شک‌دار</span>';
+            else badge = '<span class="text-slate-400 font-bold">نزده</span>';
+
+            return `
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 space-y-1 text-xs">
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold text-white">تست ${t.testNo}</span>
+                        <div class="flex items-center gap-2.5">
+                            ${badge}
+                            <i onclick="event.stopPropagation(); openEditTestModal('${t.id}')" class="fa-solid fa-pen text-blue-400 text-sm p-2 cursor-pointer inline-block"></i>
+                            <i onclick="event.stopPropagation(); deleteSingleTest('${t.id}')" class="fa-solid fa-trash text-rose-400 text-sm p-2 cursor-pointer inline-block"></i>
+                        </div>
+                    </div>
+                    ${t.reason ? `<div class="text-[10px] text-rose-300">علت خطا: ${esc(t.reason)}</div>` : ''}
+                    ${t.note ? `<div class="text-[10px] bg-slate-950 p-1.5 rounded text-slate-300 border border-slate-800">نکته: ${esc(t.note)}</div>` : ''}
+                </div>
+            `;
+        }
+
+        function toggleHistoryGroupExpand(idx) {
+            const key = historyGroups[idx].key;
+            if (expandedGroups.has(key)) expandedGroups.delete(key); else expandedGroups.add(key);
+            renderHistory();
+        }
+
+        // Bulk-edit a whole part (fixes forgotten source / wrong topic name across the whole batch)
+        function openEditPartModal(idx) {
+            editPartIndex = idx;
+            const first = historyGroups[idx].tests[0];
+            document.getElementById('editpart-subject').value = first.subject;
+            document.getElementById('editpart-source').value = first.source;
+            document.getElementById('editpart-topic').value = first.topic;
+            document.getElementById('editPartModal').classList.remove('hidden');
+        }
+        function closeEditPartModal() { document.getElementById('editPartModal').classList.add('hidden'); }
+
+        function saveEditPart() {
+            if (editPartIndex === null) return;
+            const group = historyGroups[editPartIndex];
+            const newSubject = document.getElementById('editpart-subject').value;
+            const newSource = document.getElementById('editpart-source').value || 'عمومی';
+            const newTopic = document.getElementById('editpart-topic').value || 'عمومی';
+
+            group.tests.forEach(t => {
+                t.subject = newSubject;
+                t.source = newSource;
+                t.topic = newTopic;
+            });
+
+            const sid = group.tests[0].sessionId;
+            if (sid) {
+                const meta = sessionsMeta.find(s => s.id === sid);
+                if (meta) { meta.subject = newSubject; meta.source = newSource; meta.topic = newTopic; }
+                persist();
+            }
+
+            persist();
+            closeEditPartModal();
+            updateDashboard();
+            renderHistory();
+            updateUserLevelUI();
+            showToast('کل پارت ویرایش شد');
+        }
+
+        // Delete a whole part (e.g. a batch that was mistakenly entered and is skewing the overall percentage)
+        function deleteHistoryGroup(idx) {
+            const group = historyGroups[idx];
+            if (!confirm(`این پارت (${group.tests.length} تست) به طور کامل حذف شود؟`)) return;
+            const idsToRemove = new Set(group.tests.map(t => t.id));
+            tests = tests.filter(t => !idsToRemove.has(t.id));
+
+            const sid = group.tests[0].sessionId;
+            if (sid) {
+                sessionsMeta = sessionsMeta.filter(s => s.id !== sid);
+                persist();
+            }
+
+            persist();
+            updateDashboard();
+            renderHistory();
+            updateUserLevelUI();
+            showToast('پارت حذف شد');
+        }
+
+        // Delete a single test (e.g. an accidental wrong tap that is skewing the percentage)
+        function deleteSingleTest(id) {
+            if (!confirm('این تست حذف شود؟')) return;
+            tests = tests.filter(t => t.id !== id);
+            persist();
+            updateDashboard();
+            renderHistory();
+            updateUserLevelUI();
+            showToast('تست حذف شد');
+        }
+
+        // Edit a single test (fix a forgotten source, wrong topic name, wrong status, etc.)
+        function openEditTestModal(id) {
+            const t = tests.find(x => x.id === id);
+            if (!t) return;
+            editTestId = id;
+            document.getElementById('edittest-no').value = t.testNo;
+            document.getElementById('edittest-status').value = t.status;
+            document.getElementById('edittest-source').value = t.source;
+            document.getElementById('edittest-topic').value = t.topic;
+            document.getElementById('edittest-note').value = t.note || '';
+            document.getElementById('editTestModal').classList.remove('hidden');
+        }
+        function closeEditTestModal() { document.getElementById('editTestModal').classList.add('hidden'); }
+
+        function saveEditTest() {
+            const t = tests.find(x => x.id === editTestId);
+            if (!t) return;
+            t.testNo = parseInt(num(document.getElementById('edittest-no').value)) || t.testNo;
+            t.status = document.getElementById('edittest-status').value;
+            t.source = document.getElementById('edittest-source').value || 'عمومی';
+            t.topic = document.getElementById('edittest-topic').value || 'عمومی';
+            t.note = document.getElementById('edittest-note').value;
+            persist();
+            closeEditTestModal();
+            updateDashboard();
+            renderHistory();
+            updateUserLevelUI();
+            showToast('تست ویرایش شد');
+        }
+
+        function deleteTestFromEditModal() {
+            if (editTestId === null) return;
+            if (!confirm('این تست حذف شود؟')) return;
+            tests = tests.filter(t => t.id !== editTestId);
+            persist();
+            closeEditTestModal();
+            updateDashboard();
+            renderHistory();
+            updateUserLevelUI();
+            showToast('تست حذف شد');
+        }
+
+        function showToast(msg) {
+            const toast = document.createElement('div');
+            toast.className = 'fixed top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold z-50 shadow-lg';
+            toast.innerText = msg;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2500);
+        }
+
+
+        // ===== AI ANSWER KEY SCANNER =====
+        let aiKeyImageFile = null;
+        let currentAiAnswerKey = {};
+        const ANSWER_KEY_STORAGE = 'konkur_answer_keys_v1';
+
+        function openAiKeyModal() {
+            aiKeyImageFile = null; currentAiAnswerKey = {};
+            document.getElementById('ai-key-file').value = '';
+            document.getElementById('ai-key-preview').classList.add('hidden');
+            document.getElementById('ai-key-status').classList.add('hidden');
+            document.getElementById('ai-key-result').classList.add('hidden');
+            document.getElementById('ai-key-apply-btn').classList.add('hidden');
+            document.getElementById('ai-key-analyze-btn').disabled = true;
+            document.getElementById('aiKeyModal').classList.remove('hidden');
+        }
+        function closeAiKeyModal() { document.getElementById('aiKeyModal').classList.add('hidden'); }
+        function previewAiKeyImage(e) {
+            const file = e.target.files && e.target.files[0]; if (!file) return;
+            if (!file.type.startsWith('image/')) return showAiKeyStatus('فقط فایل تصویر قابل قبول است.', true);
+            if (file.size > 10 * 1024 * 1024) return showAiKeyStatus('حجم تصویر باید کمتر از ۱۰ مگابایت باشد.', true);
+            aiKeyImageFile = file;
+            const img = document.getElementById('ai-key-preview');
+            img.src = URL.createObjectURL(file); img.classList.remove('hidden');
+            document.getElementById('ai-key-analyze-btn').disabled = false;
+            showAiKeyStatus('تصویر آماده است. حالا «تحلیل تصویر» را بزن.', false);
+        }
+        function showAiKeyStatus(msg, error) {
+            const el = document.getElementById('ai-key-status');
+            el.className = `text-xs rounded-xl p-3 ${error ? 'bg-rose-500/10 border border-rose-500/20 text-rose-300' : 'bg-indigo-500/10 border border-indigo-500/20 text-indigo-300'}`;
+            el.innerText = msg; el.classList.remove('hidden');
+        }
+        async function analyzeAiAnswerKey() {
+            if (!aiKeyImageFile) return;
+            const btn = document.getElementById('ai-key-analyze-btn');
+            btn.disabled = true; btn.innerText = 'در حال تحلیل...';
+            try {
+                if (!API_BASE) throw new Error('سرور API برای قابلیت AI تنظیم نشده است.');
+                const fd = new FormData();
+                fd.append('image', aiKeyImageFile);
+                fd.append('subject', document.getElementById('fast-subject').value);
+                fd.append('source', document.getElementById('fast-source').value || 'منبع عمومی');
+                fd.append('topic', document.getElementById('fast-topic').value || 'بدون مبحث');
+                const headers = acct.token ? { Authorization: 'Bearer ' + acct.token } : {};
+                const res = await fetch(API_BASE + '/v1/ai/answer-key', { method: 'POST', headers, body: fd, signal: AbortSignal.timeout(60000) });
+                const data = await res.json().catch(() => null);
+                if (!res.ok) throw new Error(data?.error?.message || data?.message || 'تحلیل تصویر ناموفق بود.');
+                const answers = Array.isArray(data?.answers) ? data.answers : [];
+                currentAiAnswerKey = {};
+                answers.forEach(a => {
+                    const no = parseInt(num(a.testNo)); const op = num(a.option).trim().toUpperCase();
+                    if (no > 0 && ['1','2','3','4','A','B','C','D'].includes(op)) currentAiAnswerKey[no] = ['A','B','C','D'].includes(op) ? String('ABCD'.indexOf(op)+1) : op;
+                });
+                const result = document.getElementById('ai-key-result');
+                result.innerHTML = Object.keys(currentAiAnswerKey).sort((a,b)=>a-b).map(n => `<span class="inline-flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 m-0.5 text-[10px]"><b>${n}</b><span class="text-indigo-300">گزینه ${currentAiAnswerKey[n]}</span></span>`).join('') || '<span class="text-rose-300">هیچ کلید قابل اطمینانی پیدا نشد.</span>';
+                result.classList.remove('hidden');
+                if (Object.keys(currentAiAnswerKey).length) {
+                    localStorage.setItem(ANSWER_KEY_STORAGE, JSON.stringify({ key: currentAiAnswerKey, subject: document.getElementById('fast-subject').value, source: document.getElementById('fast-source').value || 'منبع عمومی', topic: document.getElementById('fast-topic').value || 'بدون مبحث', ts: Date.now() }));
+                    document.getElementById('ai-key-apply-btn').classList.remove('hidden');
+                    showAiKeyStatus(`${Object.keys(currentAiAnswerKey).length} پاسخ استخراج شد. قبل از اعمال، نتیجه را یک نگاه سریع بررسی کن.`, false);
+                } else showAiKeyStatus('مدل نتوانست پاسخ‌ها را با اطمینان کافی استخراج کند؛ عکس واضح‌تر بفرست.', true);
+            } catch (e) { showAiKeyStatus(e.message || 'خطای ناشناخته', true); }
+            finally { btn.disabled = false; btn.innerText = 'تحلیل تصویر'; }
+        }
+        function applyAiKeyToCurrentSession() {
+            if (!Object.keys(currentAiAnswerKey).length) return;
+            let matched = 0, changed = 0;
+            currentSessionTests.forEach(t => {
+                const key = currentAiAnswerKey[parseInt(t.testNo)];
+                if (!key) return;
+                matched++;
+                if (t.val === 'شک' || t.val === 'نزده') return;
+                const old = t.status;
+                t.status = String(t.val) === String(key) ? 'correct' : 'wrong';
+                if (old !== t.status) changed++;
+            });
+            saveDraft(); updateTapUI(); openReviewModal();
+            showToast(`${matched} تست با کلید تطبیق داده شد؛ ${changed} وضعیت تغییر کرد.`);
+            closeAiKeyModal();
+        }
+
+        function getCurrentPartPercentage() {
+            const scored = currentSessionTests.filter(t => ['correct','wrong'].includes(t.status));
+            if (!scored.length) return null;
+            const correct = scored.filter(t => t.status === 'correct').length;
+            const wrong = scored.filter(t => t.status === 'wrong').length;
+            return Math.round(((3 * correct - wrong) / (3 * scored.length)) * 100);
+        }
+
+        // SMART ANSWER SHEET (colorful, konkur-style bubble sheet per topic)
+        function openAnswerSheet(subject, topic) {
+            asheetSubject = subject;
+            asheetTopic = topic;
+            asheetFilter = 'all';
+            document.getElementById('asheet-title').innerText = `پاسخ‌برگ: ${subject} / ${topic}`;
+            renderAnswerSheetFilters();
+            renderAnswerSheetGrid();
+            document.getElementById('answerSheetModal').classList.remove('hidden');
+        }
+
+        function closeAnswerSheet() {
+            document.getElementById('answerSheetModal').classList.add('hidden');
+        }
+
+        function setAnswerSheetFilter(f) {
+            asheetFilter = f;
+            renderAnswerSheetFilters();
+            renderAnswerSheetGrid();
+        }
+
+        function renderAnswerSheetFilters() {
+            const labels = { all: 'همه', important: 'فقط مهم‌ها', later: 'فقط برای بعد' };
+            ['all', 'important', 'later'].forEach(f => {
+                const btn = document.getElementById(`asheet-filter-${f}`);
+                btn.innerText = labels[f];
+                btn.className = `flex-1 py-1.5 rounded-lg border font-bold transition ${asheetFilter === f ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}`;
+            });
+        }
+
+        function getAnswerSheetTests() {
+            let list = tests.filter(t => t.subject === asheetSubject && (t.topic || 'بدون مبحث') === asheetTopic);
+            if (asheetFilter === 'important') list = list.filter(t => t.important);
+            if (asheetFilter === 'later') list = list.filter(t => t.later);
+            return list.sort((a, b) => (parseInt(a.testNo) || 0) - (parseInt(b.testNo) || 0));
+        }
+
+        function renderAnswerSheetGrid() {
+            const grid = document.getElementById('asheet-grid');
+            const list = getAnswerSheetTests();
+
+            if (list.length === 0) {
+                grid.className = 'p-4 overflow-y-auto flex-1';
+                grid.innerHTML = '<p class="text-xs text-slate-500 text-center py-8 col-span-5">تستی با این فیلتر یافت نشد.</p>';
+                return;
+            }
+            grid.className = 'p-4 overflow-y-auto flex-1 grid grid-cols-5 gap-2';
+
+            const styleMap = {
+                correct: 'bg-emerald-500/15 border-emerald-500/60 text-emerald-300',
+                wrong: 'bg-rose-500/15 border-rose-500/60 text-rose-300',
+                doubt: 'bg-amber-500/15 border-amber-500/60 text-amber-300',
+                empty: 'bg-slate-800/60 border-slate-700 text-slate-400'
+            };
+
+            grid.innerHTML = list.map(t => `
+                <div class="asheet-cell ${styleMap[t.status] || styleMap.empty}">
+                    <div class="asheet-flagbar">
+                        <i onclick="toggleImportant('${t.id}')" class="fa-solid fa-star text-[10px] cursor-pointer ${t.important ? 'text-amber-400' : 'text-slate-600'}"></i>
+                        <i onclick="toggleLater('${t.id}')" class="fa-solid fa-clock text-[10px] cursor-pointer ${t.later ? 'text-blue-400' : 'text-slate-600'}"></i>
+                    </div>
+                    <span class="font-black text-[13px] mt-1.5">${t.testNo}</span>
+                    <span class="text-[9px] opacity-80">${t.val || '-'}</span>
+                </div>
+            `).join('');
+        }
+
+        function toggleImportant(id) {
+            const t = tests.find(x => x.id === id);
+            if (!t) return;
+            t.important = !t.important;
+            persist();
+            renderAnswerSheetGrid();
+        }
+
+        function toggleLater(id) {
+            const t = tests.find(x => x.id === id);
+            if (!t) return;
+            t.later = !t.later;
+            persist();
+            renderAnswerSheetGrid();
+        }
+
+        function clearAllData() {
+            if (confirm('کل داده‌ها و امتیازها پاک شوند؟ (یک نسخه‌ی پشتیبان داخلی نگه داشته می‌شود)')) {
+                snapshot('konkur_backup_preclear'); localStorage.removeItem('konkur_draft');
+                tests = [];
+                sessionsMeta = [];
+                localStorage.removeItem('konkur_tests');
+                localStorage.removeItem('konkur_xp');
+                localStorage.removeItem('konkur_sessions_meta');
+                updateDashboard();
+                renderHistory();
+                updateUserLevelUI();
+            }
+        }
+
+        function exportData() {
+            const blob = new Blob([JSON.stringify({ schema: SCHEMA, exportedAt: new Date().toISOString(), tests, sessionsMeta, xp: getUserXp() })], { type: 'application/json' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+            a.download = `konkur_backup_${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        }
+
+        function importData(e) {
+            const file = e.target.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = evt => {
+                try {
+                    const p = JSON.parse(evt.target.result);
+                    const arr = Array.isArray(p) ? p : p.tests;
+                    if (!Array.isArray(arr)) throw new Error('bad');
+                    const sig = t => [t.sessionId, t.testNo, t.subject, t.source, t.topic, t.date, t.val, t.status].join('|');
+                    const have = new Set(tests.map(sig)), ids = new Set(tests.map(t => t.id));
+                    const fresh = arr.slice(0, 50000).map(normTest).filter(t => t && !ids.has(t.id) && !have.has(sig(t)));
+                    if (!confirm(`${fresh.length} تست جدید به ${tests.length} تست فعلی اضافه شود؟\n(تکراری‌ها نادیده گرفته می‌شوند و داده‌ی فعلی پاک نمی‌شود)`)) return;
+                    snapshot('konkur_backup_preimport');
+                    const seen = new Set(ids);
+                    fresh.forEach(t => { if (!t.id || seen.has(t.id)) t.id = uid(); seen.add(t.id); });
+                    tests = tests.concat(fresh);
+                    (Array.isArray(p.sessionsMeta) ? p.sessionsMeta : []).forEach(m => {
+                        if (m && m.id && typeof m.lastNo === 'number' && !sessionsMeta.some(x => x.id === sid(m.id))) {
+                            const str = k => String(m[k] ?? '').slice(0, 200);
+                            sessionsMeta.push({ id: sid(m.id), subject: str('subject'), source: str('source'), topic: str('topic'), startNo: +m.startNo || 0, endNo: +m.endNo || 0, lastNo: +m.lastNo, timestamp: +m.timestamp || Date.now() });
+                        }
+                    });
+                    persist(); updateDashboard(); renderHistory(); updateUserLevelUI();
+                    showToast(`${fresh.length} تست بازیابی شد`);
+                } catch (err) { alert('فایل نامعتبر است'); }
+                e.target.value = '';
+            };
+            reader.readAsText(file);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+{
+  "appId": "ir.example.konkuranalyzer",
+  "appName": "تحلیل تست کنکور",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}
